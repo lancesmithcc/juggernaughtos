@@ -399,14 +399,14 @@ fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: 10px; }
 .md code { padding: 1px 6px; border-radius: 6px; background: var(--surface-sunk); }
 .md pre { padding: 14px 16px; border-radius: 14px; background: var(--surface-sunk); overflow-x: auto; }
 .md pre code { padding: 0; background: none; }
-.md blockquote { padding-left: 14px; border-left: 3px solid var(--line-strong); color: var(--ink-soft); }
+.md blockquote { padding: 10px 14px; border-radius: 12px; background: var(--surface-sunk); color: var(--ink-soft); }
 .md table { border-collapse: collapse; font-size: 14px; }
 .md th, .md td { padding: 6px 10px; border-bottom: 1px solid var(--line); text-align: left; }
 .msg.streaming .md > :last-child::after {
   content: ""; display: inline-block; width: 0.5em; height: 1.05em; margin-left: 2px; vertical-align: -0.18em;
   border-radius: 2px; background: var(--primary); animation: caret 1s steps(2, start) infinite;
 }
-.live { margin: 0 0 8px; font-size: 13px; color: var(--ink-soft); background: linear-gradient(90deg, var(--ink-faint), var(--ink), var(--ink-faint)); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: shimmer 1.6s linear infinite; }
+.live { margin: 0 0 8px; font-size: 13px; color: var(--ink-soft); animation: breathe-text 1.6s var(--ease) infinite; }
 .msg.assistant .dots { display: inline-flex; gap: 5px; align-items: center; height: 28px; }
 
 .linkish { padding: 0; border: 0; background: none; color: var(--ink-soft); font-size: 13.5px; text-decoration: underline; text-underline-offset: 0.2em; }
@@ -442,6 +442,7 @@ fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: 10px; }
 .provider-status[data-ready="true"] .dot { background: var(--ok); }
 .signout { margin-top: 40px; }
 @keyframes caret { to { visibility: hidden; } }
+@keyframes breathe-text { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; }
