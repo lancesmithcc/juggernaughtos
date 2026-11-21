@@ -1,0 +1,11 @@
+[package]
+name = "jugg-brand"
+description = "Machine-readable brand standards: schema, CSS tokens, DESIGN.md export, token linter"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+regex.workspace = true

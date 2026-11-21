@@ -1,0 +1,66 @@
+# Pinned external tools. Managed by `juggernaught update`; do not hand-edit in
+# production. Versions verified 2026-11-21. All licences permit redistribution.
+
+[tool.photocraft]
+repo = "storytold/photocraft"
+version = "v0.23.1"
+install = "cargo"
+bin = "bin/photocraft-cli"
+mcp = ["mcp"]
+license = "MIT OR Apache-2.0"
+timeout_secs = 600
+memory_mb = 4096
+
+[tool.vectorcraft]
+repo = "storytold/vectorcraft"
+version = "v0.24.1"
+install = "cargo"
+bin = "bin/vectorcraft-cli"
+mcp = ["mcp"]
+license = "MIT OR Apache-2.0"
+
+[tool.pdfcraft]
+repo = "storytold/pdfcraft"
+version = "v0.21.1"
+install = "cargo"
+bin = "bin/pdfcraft-cli"
+license = "MIT OR Apache-2.0"
+
+[tool.kokoros]
+repo = "lucasjinreal/Kokoros"
+version = "main@2026-10-05"
+install = "cargo"
+bin = "bin/koko"
+license = "Apache-2.0"
+memory_mb = 2048
+
+[tool.hyperframes]
+repo = "heygen-com/hyperframes"
+version = "v0.9.78"
+install = "npm"
+bin = "node_modules/.bin/hyperframes"
+license = "Apache-2.0"
+timeout_secs = 1800
+memory_mb = 6144
+
+[tool.open-design]
+repo = "nexu-io/open-design"
+version = "open-design-v0.27.2"
+install = "npm"
+bin = "node_modules/.bin/open-design"
+license = "Apache-2.0"
+
+[tool.impeccable]
+repo = "pbakaus/impeccable"
+version = "engine-v0.1.28"
+install = "cargo"
+bin = "bin/impeccable"
+license = "Apache-2.0"
+
+[tool.google-fonts]
+repo = "google/fonts"
+version = "main@2026-11-21"
+install = "font-mirror"
+bin = ""
+license = "OFL-1.1 / Apache-2.0 / UFL (per family)"
+network = true

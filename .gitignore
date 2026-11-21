@@ -1,0 +1,5 @@
+/target
+/.jugg-dev
+.DS_Store
+*.pk8
+*.key

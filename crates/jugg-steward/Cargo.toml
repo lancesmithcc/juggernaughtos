@@ -1,0 +1,15 @@
+[package]
+name = "jugg-steward"
+description = "Automated security + maintenance daemon: sensors, confidence-scored correlator, firewall bans, honeytokens, FIM, health checks"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+jugg-core.workspace = true
+jugg-crypto.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+thiserror.workspace = true

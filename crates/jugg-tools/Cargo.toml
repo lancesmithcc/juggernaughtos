@@ -1,0 +1,22 @@
+[package]
+name = "jugg-tools"
+description = "Tool registry the AI drives: native tools, sandboxed CLI/MCP adapters for the creative suite, MCP bridge"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+jugg-core.workspace = true
+jugg-brand.workspace = true
+vectorverter-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+tokio.workspace = true
+async-trait.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
+image.workspace = true

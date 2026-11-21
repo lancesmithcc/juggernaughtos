@@ -1,0 +1,38 @@
+# Juggernaught OS — main service (installed by install.sh, phase 2)
+[Unit]
+Description=Juggernaught OS
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=jugg
+Group=jugg
+Environment=JUGG_CONFIG=/etc/juggernaught/juggernaught.toml
+Environment=LEPTOS_SITE_ROOT=/opt/juggernaught/current/site
+ExecStart=/opt/juggernaught/current/bin/juggernaught serve
+Restart=always
+RestartSec=3
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=~net
+LockPersonality=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+ReadWritePaths=/var/lib/juggernaught
+MemoryMax=80%
+CPUQuota=350%
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

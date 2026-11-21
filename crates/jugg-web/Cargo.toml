@@ -1,0 +1,11 @@
+[package]
+name = "jugg-web"
+description = "Website standards: block schema, validator with logged overrides, static renderer with strict CSP"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+jugg-brand.workspace = true
+serde.workspace = true
+serde_json.workspace = true

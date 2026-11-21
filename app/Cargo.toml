@@ -1,0 +1,56 @@
+[package]
+name = "juggernaught"
+description = "Juggernaught OS — admin app (Leptos SSR + hydrate) and the `juggernaught` server binary"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "juggernaught"
+path = "src/main.rs"
+
+[dependencies]
+leptos.workspace = true
+leptos_router.workspace = true
+leptos_meta.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+console_error_panic_hook = { workspace = true, optional = true }
+wasm-bindgen = { workspace = true, optional = true }
+
+# server-only
+leptos_axum = { workspace = true, optional = true }
+axum = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+tower = { workspace = true, optional = true }
+tower-http = { workspace = true, optional = true }
+http = { workspace = true, optional = true }
+clap = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true }
+tracing-subscriber = { workspace = true, optional = true }
+secrecy = { workspace = true, optional = true }
+rustls = { workspace = true, optional = true }
+jugg-core = { workspace = true, optional = true }
+jugg-crypto = { workspace = true, optional = true }
+jugg-db = { workspace = true, optional = true }
+jugg-auth = { workspace = true, optional = true }
+jugg-brand = { workspace = true, optional = true }
+jugg-ai = { workspace = true, optional = true }
+jugg-tools = { workspace = true, optional = true }
+jugg-web = { workspace = true, optional = true }
+jugg-steward = { workspace = true, optional = true }
+jugg-updater = { workspace = true, optional = true }
+
+[features]
+default = ["ssr"]
+hydrate = ["leptos/hydrate", "dep:console_error_panic_hook", "dep:wasm-bindgen"]
+ssr = [
+    "dep:leptos_axum", "dep:axum", "dep:tokio", "dep:tower", "dep:tower-http", "dep:http", "dep:clap",
+    "dep:tracing", "dep:tracing-subscriber", "dep:secrecy", "dep:rustls",
+    "dep:jugg-core", "dep:jugg-crypto", "dep:jugg-db", "dep:jugg-auth", "dep:jugg-brand", "dep:jugg-ai",
+    "dep:jugg-tools", "dep:jugg-web", "dep:jugg-steward", "dep:jugg-updater",
+    "leptos/ssr", "leptos/nonce", "leptos_meta/ssr", "leptos_router/ssr",
+]

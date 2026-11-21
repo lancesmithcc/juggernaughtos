@@ -1,0 +1,14 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "plus jakarta sans",
+        "createdAt": "2026-11-21T22:50:23.873Z",
+        "reason": "user confirmed: original brief says out of the box it 'uses jakarta font by google'"
+      }
+    ]
+  }
+}

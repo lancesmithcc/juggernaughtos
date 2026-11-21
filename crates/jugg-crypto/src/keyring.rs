@@ -1,0 +1,167 @@
+use crate::{CryptoError, Result};
+use aws_lc_rs::hkdf::{Salt, HKDF_SHA256};
+use secrecy::{ExposeSecret, SecretBox};
+use std::path::{Path, PathBuf};
+
+/// What a derived key is for. Each purpose gets an independent key so a
+/// compromise of one use (say a leaked blind index) says nothing about another.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Purpose {
+    /// Field-level encryption of SQLite columns.
+    Field,
+    /// HMAC blind indexes so encrypted columns stay searchable by equality.
+    BlindIndex,
+    /// Wrapping per-file data keys.
+    FileWrap,
+    /// Session / magic-link token MACs.
+    Token,
+}
+
+impl Purpose {
+    fn label(self) -> &'static [u8] {
+        match self {
+            Purpose::Field => b"jugg/v1/field",
+            Purpose::BlindIndex => b"jugg/v1/blind-index",
+            Purpose::FileWrap => b"jugg/v1/file-wrap",
+            Purpose::Token => b"jugg/v1/token",
+        }
+    }
+}
+
+struct Kek(SecretBox<[u8; 32]>);
+
+/// The box key-encryption key (KEK) plus everything derived from it.
+///
+/// The KEK lives **outside SQLite** in `keys_dir/kek-<id>.key` (mode 0600, owned by the
+/// `jugg` service user). Rotation adds a new KEK id; old ids stay readable until
+/// a re-encryption sweep finishes. Optional hardening (phase 5): seal the KEK
+/// with TPM2 or require an unlock passphrase at boot (Argon2id-derived wrap).
+pub struct Keyring {
+    dir: PathBuf,
+    active: u8,
+    keks: Vec<(u8, Kek)>,
+}
+
+impl Keyring {
+    /// Load every KEK in `dir`, creating KEK 1 on first boot.
+    pub fn load_or_create(dir: impl AsRef<Path>) -> Result<Self> {
+        let dir = dir.as_ref().to_path_buf();
+        std::fs::create_dir_all(&dir).map_err(|e| CryptoError::KeyStore(e.to_string()))?;
+        restrict_dir(&dir)?;
+
+        let mut keks = Vec::new();
+        for entry in std::fs::read_dir(&dir).map_err(|e| CryptoError::KeyStore(e.to_string()))? {
+            let entry = entry.map_err(|e| CryptoError::KeyStore(e.to_string()))?;
+            let name = entry.file_name().to_string_lossy().to_string();
+            if let Some(id) = name.strip_prefix("kek-").and_then(|s| s.strip_suffix(".key")) {
+                let id: u8 = id.parse().map_err(|_| CryptoError::KeyStore(format!("bad key file {name}")))?;
+                let bytes = std::fs::read(entry.path()).map_err(|e| CryptoError::KeyStore(e.to_string()))?;
+                let arr: [u8; 32] = bytes.try_into().map_err(|_| CryptoError::KeyStore(format!("{name} is not 32 bytes")))?;
+                keks.push((id, Kek(SecretBox::new(Box::new(arr)))));
+            }
+        }
+        keks.sort_by_key(|(id, _)| *id);
+
+        let mut ring = Self { dir, active: 0, keks };
+        if ring.keks.is_empty() {
+            ring.rotate()?;
+        } else {
+            ring.active = ring.keks.last().map(|(id, _)| *id).unwrap_or(1);
+        }
+        Ok(ring)
+    }
+
+    /// In-memory keyring for tests and dev.
+    pub fn ephemeral() -> Self {
+        Self { dir: PathBuf::new(), active: 1, keks: vec![(1, Kek(SecretBox::new(Box::new(crate::random_bytes::<32>()))))] }
+    }
+
+    /// Create a new KEK and make it active. Returns the new id.
+    pub fn rotate(&mut self) -> Result<u8> {
+        let id = self.keks.last().map(|(id, _)| id + 1).unwrap_or(1);
+        let key = crate::random_bytes::<32>();
+        if !self.dir.as_os_str().is_empty() {
+            let path = self.dir.join(format!("kek-{id}.key"));
+            write_secret_file(&path, &key)?;
+        }
+        self.keks.push((id, Kek(SecretBox::new(Box::new(key)))));
+        self.active = id;
+        Ok(id)
+    }
+
+    pub fn active_id(&self) -> u8 {
+        self.active
+    }
+
+    /// Derive a 32-byte purpose key from KEK `id` via HKDF-SHA256.
+    pub fn derive(&self, id: u8, purpose: Purpose) -> Result<SecretBox<[u8; 32]>> {
+        let kek = self.keks.iter().find(|(k, _)| *k == id).map(|(_, k)| k).ok_or(CryptoError::UnknownKey(id))?;
+        let salt = Salt::new(HKDF_SHA256, b"juggernaught-os");
+        let prk = salt.extract(kek.0.expose_secret());
+        let info = [purpose.label()];
+        let okm = prk.expand(&info, HkdfLen(32))?;
+        let mut out = [0u8; 32];
+        okm.fill(&mut out)?;
+        Ok(SecretBox::new(Box::new(out)))
+    }
+
+    pub(crate) fn derive_active(&self, purpose: Purpose) -> Result<(u8, SecretBox<[u8; 32]>)> {
+        Ok((self.active, self.derive(self.active, purpose)?))
+    }
+}
+
+struct HkdfLen(usize);
+impl aws_lc_rs::hkdf::KeyType for HkdfLen {
+    fn len(&self) -> usize {
+        self.0
+    }
+}
+
+pub(crate) fn write_secret_file(path: &Path, bytes: &[u8]) -> Result<()> {
+    use std::io::Write;
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    let mut f = opts.open(path).map_err(|e| CryptoError::KeyStore(format!("{}: {e}", path.display())))?;
+    f.write_all(bytes).map_err(|e| CryptoError::KeyStore(e.to_string()))?;
+    f.sync_all().map_err(|e| CryptoError::KeyStore(e.to_string()))
+}
+
+fn restrict_dir(dir: &Path) -> Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))
+            .map_err(|e| CryptoError::KeyStore(e.to_string()))?;
+    }
+    let _ = dir;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn persists_and_rotates() {
+        let dir = tempfile::tempdir().unwrap();
+        let k1 = {
+            let ring = Keyring::load_or_create(dir.path()).unwrap();
+            assert_eq!(ring.active_id(), 1);
+            *ring.derive(1, Purpose::Field).unwrap().expose_secret()
+        };
+        let mut ring = Keyring::load_or_create(dir.path()).unwrap();
+        assert_eq!(*ring.derive(1, Purpose::Field).unwrap().expose_secret(), k1, "KEK must persist");
+        assert_ne!(
+            *ring.derive(1, Purpose::Field).unwrap().expose_secret(),
+            *ring.derive(1, Purpose::BlindIndex).unwrap().expose_secret(),
+            "purposes must be independent"
+        );
+        assert_eq!(ring.rotate().unwrap(), 2);
+        assert_eq!(Keyring::load_or_create(dir.path()).unwrap().active_id(), 2);
+    }
+}

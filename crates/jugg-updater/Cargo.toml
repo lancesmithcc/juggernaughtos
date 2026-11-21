@@ -1,0 +1,17 @@
+[package]
+name = "jugg-updater"
+description = "Signed, staged, self-rolling-back updates for the platform, every tool, fonts and models"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+jugg-core.workspace = true
+jugg-crypto.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+base64.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

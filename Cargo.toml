@@ -1,0 +1,121 @@
+[workspace]
+resolver = "2"
+members = [
+    "app",
+    "crates/jugg-core",
+    "crates/jugg-crypto",
+    "crates/jugg-db",
+    "crates/jugg-auth",
+    "crates/jugg-brand",
+    "crates/jugg-ai",
+    "crates/jugg-tools",
+    "crates/jugg-web",
+    "crates/jugg-steward",
+    "crates/jugg-updater",
+    "crates/vectorverter-core",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["Genex Marketing"]
+rust-version = "1.85"
+
+[workspace.dependencies]
+# internal
+jugg-core = { path = "crates/jugg-core" }
+jugg-crypto = { path = "crates/jugg-crypto" }
+jugg-db = { path = "crates/jugg-db" }
+jugg-auth = { path = "crates/jugg-auth" }
+jugg-brand = { path = "crates/jugg-brand" }
+jugg-ai = { path = "crates/jugg-ai" }
+jugg-tools = { path = "crates/jugg-tools" }
+jugg-web = { path = "crates/jugg-web" }
+jugg-steward = { path = "crates/jugg-steward" }
+jugg-updater = { path = "crates/jugg-updater" }
+vectorverter-core = { path = "crates/vectorverter-core" }
+
+# web / runtime
+leptos = { version = "0.8" }
+leptos_router = { version = "0.8" }
+leptos_meta = { version = "0.8" }
+leptos_axum = { version = "0.8" }
+axum = { version = "0.8", features = ["macros"] }
+tokio = { version = "1", features = ["full"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["fs", "trace", "set-header", "compression-br", "compression-gzip"] }
+wasm-bindgen = "0.2"
+console_error_panic_hook = "0.1"
+http = "1"
+
+# data
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros", "json", "time", "uuid"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+uuid = { version = "1", features = ["v4", "v7", "serde"] }
+time = { version = "0.3", features = ["serde", "formatting", "parsing", "macros"] }
+
+# crypto (aws-lc-rs everywhere: AES-256-GCM, ML-KEM-768, ML-DSA-65, HMAC, SHA-2)
+aws-lc-rs = { version = "1.19" }
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "prefer-post-quantum", "std", "tls12", "logging"] }
+argon2 = "0.5"
+totp-rs = { version = "5", features = ["gen_secret", "otpauth", "qr"] }
+secrecy = { version = "0.10", features = ["serde"] }
+zeroize = { version = "1", features = ["derive"] }
+base64 = "0.22"
+hex = "0.4"
+
+# misc
+anyhow = "1"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+async-trait = "0.1"
+futures = "0.3"
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+clap = { version = "4", features = ["derive", "env"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif", "bmp"] }
+regex = "1"
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.release]
+lto = "thin"
+codegen-units = 4
+strip = "debuginfo"
+
+[profile.wasm-release]
+inherits = "release"
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+
+# ---------------------------------------------------------------------------
+# cargo-leptos: builds the admin app (SSR server bin + hydrate wasm)
+# `cargo leptos watch` for dev, `cargo leptos build --release` for prod.
+# ---------------------------------------------------------------------------
+[[workspace.metadata.leptos]]
+name = "juggernaught"
+bin-package = "juggernaught"
+lib-package = "juggernaught"
+output-name = "juggernaught"
+site-root = "target/site"
+site-pkg-dir = "pkg"
+style-file = "app/style/main.css"
+assets-dir = "public"
+site-addr = "127.0.0.1:3700"
+reload-port = 3701
+browserquery = "defaults"
+env = "DEV"
+bin-features = ["ssr"]
+bin-default-features = false
+lib-features = ["hydrate"]
+lib-default-features = false
+lib-profile-release = "wasm-release"

@@ -1,0 +1,25 @@
+# Juggernaught Steward — security + maintenance daemon (phase 2)
+[Unit]
+Description=Juggernaught Steward
+After=network-online.target nftables.service
+
+[Service]
+Type=simple
+User=jugg-steward
+Group=jugg-steward
+ExecStart=/opt/juggernaught/current/bin/juggernaught steward
+Restart=always
+RestartSec=2
+AmbientCapabilities=CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_ADMIN
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/juggernaught-steward /run/juggernaught
+ReadOnlyPaths=/opt/juggernaught /etc/juggernaught /var/log/journal
+MemoryMax=256M
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

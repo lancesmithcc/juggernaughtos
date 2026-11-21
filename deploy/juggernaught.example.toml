@@ -1,0 +1,24 @@
+# /etc/juggernaught/juggernaught.toml — no secrets in this file.
+domain = "example.com"           # admin is served at admin.example.com
+acme_email = "owner@example.com"
+data_dir = "/var/lib/juggernaught"
+keys_dir = "/var/lib/juggernaught/keys"
+tools_dir = "/opt/juggernaught/tools"
+listen_http = "0.0.0.0:80"
+listen_https = "0.0.0.0:443"
+
+[mail]
+smtp_url = "smtp://postmaster@example.com@smtp.example.com:587"
+from = "Juggernaught <hello@example.com>"
+
+[steward]
+ban_threshold = 1.0
+incident_threshold = 0.6
+score_half_life_secs = 1800
+ban_secs = 86400
+
+[updates]
+channel = "stable"
+auto_security = true
+auto_minor = true
+window_utc_hour = 9
