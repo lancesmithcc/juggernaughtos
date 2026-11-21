@@ -45,7 +45,7 @@ async fn version(bin: &str) -> Result<String, AiError> {
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
-async fn pump(mut child: tokio::process::Child, input: String, tx: &mpsc::Sender<AgentEvent>, parse: fn(&Value) -> Vec<AgentEvent>) -> Result<(), AiError> {
+async fn pump(mut child: tokio::process::Child, input: String, tx: &mpsc::Sender<AgentEvent>, mut parse: impl FnMut(&Value) -> Vec<AgentEvent>) -> Result<(), AiError> {
     if let Some(mut stdin) = child.stdin.take() {
         stdin.write_all(input.as_bytes()).await?;
         drop(stdin);
@@ -95,42 +95,68 @@ impl Provider for ClaudeCodeCli {
         }
         cmd.current_dir(&req.ctx.job_dir).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).kill_on_drop(true);
         let child = cmd.spawn().map_err(|e| AiError::Unavailable(e.to_string()))?;
-        pump(child, transcript(&req), &tx, parse_claude).await
+        let mut parser = ClaudeParser::default();
+        pump(child, transcript(&req), &tx, move |v| parser.parse(v)).await
     }
 }
 
-/// Claude Code `stream-json`: one JSON object per line.
-fn parse_claude(v: &Value) -> Vec<AgentEvent> {
-    let mut out = Vec::new();
-    match v["type"].as_str() {
-        Some("assistant") => {
-            for block in v["message"]["content"].as_array().into_iter().flatten() {
-                match block["type"].as_str() {
-                    Some("text") => out.push(AgentEvent::TextDelta { text: block["text"].as_str().unwrap_or_default().into() }),
-                    Some("tool_use") => out.push(AgentEvent::ToolStarted {
-                        name: block["name"].as_str().unwrap_or_default().trim_start_matches("mcp__jugg__").into(),
-                        args: block["input"].clone(),
-                    }),
-                    _ => {}
+/// Claude Code `stream-json`: one JSON object per line. Stateful because
+/// `tool_result` blocks only carry the `tool_use_id`; we remember which of
+/// those were Juggernaught tools and ignore Claude Code's own internals.
+#[derive(Default)]
+pub struct ClaudeParser {
+    ours: std::collections::HashMap<String, String>,
+}
+
+const PREFIX: &str = "mcp__jugg__";
+
+impl ClaudeParser {
+    pub fn parse(&mut self, v: &Value) -> Vec<AgentEvent> {
+        let mut out = Vec::new();
+        match v["type"].as_str() {
+            Some("assistant") => {
+                for block in v["message"]["content"].as_array().into_iter().flatten() {
+                    match block["type"].as_str() {
+                        Some("text") => out.push(AgentEvent::TextDelta { text: block["text"].as_str().unwrap_or_default().into() }),
+                        Some("tool_use") => {
+                            let name = block["name"].as_str().unwrap_or_default();
+                            if let Some(short) = name.strip_prefix(PREFIX) {
+                                self.ours.insert(block["id"].as_str().unwrap_or_default().into(), short.into());
+                                out.push(AgentEvent::ToolStarted { name: short.into(), args: block["input"].clone() });
+                            }
+                        }
+                        _ => {}
+                    }
                 }
             }
-        }
-        Some("user") => {
-            for block in v["message"]["content"].as_array().into_iter().flatten() {
-                if block["type"] == "tool_result" {
-                    let text = block["content"].as_array().and_then(|a| a.first()).and_then(|c| c["text"].as_str()).unwrap_or_default();
-                    out.push(AgentEvent::ToolFinished { name: String::new(), summary: text.into(), is_error: block["is_error"].as_bool().unwrap_or(false) });
+            Some("user") => {
+                for block in v["message"]["content"].as_array().into_iter().flatten() {
+                    if block["type"] != "tool_result" {
+                        continue;
+                    }
+                    let Some(name) = self.ours.remove(block["tool_use_id"].as_str().unwrap_or_default()) else { continue };
+                    let text = match &block["content"] {
+                        Value::String(s) => s.clone(),
+                        Value::Array(a) => a.iter().filter_map(|c| c["text"].as_str()).collect::<Vec<_>>().join("\n"),
+                        _ => String::new(),
+                    };
+                    // Structured results carry their own one-line summary.
+                    let summary = serde_json::from_str::<Value>(&text)
+                        .ok()
+                        .and_then(|j| j["summary"].as_str().map(str::to_string))
+                        .unwrap_or_else(|| text.lines().find(|l| !l.trim().is_empty()).unwrap_or("done").trim_start_matches('#').trim().to_string());
+                    out.push(AgentEvent::ToolFinished { name, summary, is_error: block["is_error"].as_bool().unwrap_or(false) });
                 }
             }
+            Some("result") => out.push(AgentEvent::Usage {
+                input_tokens: v["usage"]["input_tokens"].as_u64().unwrap_or(0),
+                output_tokens: v["usage"]["output_tokens"].as_u64().unwrap_or(0),
+                model: "claude-code".into(),
+            }),
+            _ => {}
         }
-        Some("result") => out.push(AgentEvent::Usage {
-            input_tokens: v["usage"]["input_tokens"].as_u64().unwrap_or(0),
-            output_tokens: v["usage"]["output_tokens"].as_u64().unwrap_or(0),
-            model: "claude-code".into(),
-        }),
-        _ => {}
+        out
     }
-    out
 }
 
 #[async_trait]
@@ -189,9 +215,19 @@ mod tests {
 
     #[test]
     fn parses_claude_stream() {
-        let ev = parse_claude(&json!({"type":"assistant","message":{"content":[{"type":"text","text":"Hi"},{"type":"tool_use","name":"mcp__jugg__vectorize","input":{"input":"a.png"}}]}}));
+        let mut p = ClaudeParser::default();
+        let ev = p.parse(&json!({"type":"assistant","message":{"content":[
+            {"type":"text","text":"Hi"},
+            {"type":"tool_use","id":"t1","name":"mcp__jugg__vectorize","input":{"input":"a.png"}},
+            {"type":"tool_use","id":"t2","name":"ToolSearch","input":{}}]}}));
+        assert_eq!(ev.len(), 2, "Claude Code internals are hidden");
         assert!(matches!(&ev[0], AgentEvent::TextDelta { text } if text == "Hi"));
         assert!(matches!(&ev[1], AgentEvent::ToolStarted { name, .. } if name == "vectorize"));
+        let done = p.parse(&json!({"type":"user","message":{"content":[
+            {"type":"tool_result","tool_use_id":"t2","content":"internal"},
+            {"type":"tool_result","tool_use_id":"t1","content":[{"type":"text","text":"Vectorized → logo.svg (3 colours)"}]}]}}));
+        assert_eq!(done.len(), 1);
+        assert!(matches!(&done[0], AgentEvent::ToolFinished { name, summary, .. } if name == "vectorize" && summary.starts_with("Vectorized")));
     }
 
     #[test]

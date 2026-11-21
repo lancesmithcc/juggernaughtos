@@ -5,6 +5,33 @@ use sqlx::SqlitePool;
 pub const MAX_AGE_SECS: i64 = 30 * 24 * 3600;
 pub const IDLE_SECS: i64 = 7 * 24 * 3600;
 pub const COOKIE: &str = "__Host-jugg_session";
+/// Browsers only accept `__Host-` cookies over HTTPS; dev runs on plain http://localhost.
+pub const DEV_COOKIE: &str = "jugg_session";
+
+pub fn cookie_name(dev: bool) -> &'static str {
+    if dev {
+        DEV_COOKIE
+    } else {
+        COOKIE
+    }
+}
+
+/// `Set-Cookie` value for a new session.
+pub fn set_cookie(token: &str, dev: bool) -> String {
+    let secure = if dev { "" } else { "; Secure" };
+    format!("{}={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={MAX_AGE_SECS}{secure}", cookie_name(dev))
+}
+
+pub fn clear_cookie(dev: bool) -> String {
+    let secure = if dev { "" } else { "; Secure" };
+    format!("{}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0{secure}", cookie_name(dev))
+}
+
+/// Find the session token in a `Cookie` header.
+pub fn token_from_cookie_header(header: &str, dev: bool) -> Option<String> {
+    let name = cookie_name(dev);
+    header.split(';').find_map(|kv| kv.trim().strip_prefix(name).and_then(|r| r.strip_prefix('=')).map(str::to_string)).filter(|t| !t.is_empty())
+}
 
 pub struct Session {
     pub user_id: String,

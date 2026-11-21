@@ -78,6 +78,11 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "str
 clap = { version = "4", features = ["derive", "env"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif", "bmp"] }
 regex = "1"
+pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
+web-sys = { version = "0.3", features = ["EventSource", "MessageEvent", "Event", "Window", "Location"] }
+js-sys = "0.3"
+wasm-bindgen-futures = "0.4"
+lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "pool", "hostname", "builder", "tokio1", "tokio1-rustls", "aws-lc-rs", "rustls-native-certs"] }
 
 [profile.dev]
 opt-level = 1

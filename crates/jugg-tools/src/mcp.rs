@@ -37,7 +37,7 @@ pub async fn handle(registry: &Registry, ctx: &ToolContext, req: &Value) -> Opti
             match registry.call(name, args, ctx).await {
                 Ok(out) => Ok(json!({
                     "content": [{"type": "text", "text": out.summary}],
-                    "structuredContent": {"files": out.files, "data": out.data}
+                    "structuredContent": {"summary": out.summary, "files": out.files, "data": out.data}
                 })),
                 // Tool errors are results the model can react to, not protocol errors.
                 Err(ToolError::NeedsApproval) => Ok(json!({

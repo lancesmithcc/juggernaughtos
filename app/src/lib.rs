@@ -1,8 +1,10 @@
 //! Juggernaught admin app: chat-first, Leptos SSR + hydration.
-#![recursion_limit = "256"]
+#![recursion_limit = "512"]
 
 pub mod api;
 pub mod app;
+pub mod client;
+pub mod markdown;
 pub mod pages;
 #[cfg(feature = "ssr")]
 pub mod server;

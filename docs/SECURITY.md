@@ -84,8 +84,11 @@ sent to the model).
 
 ## 6. Known gaps (honest list)
 
-- Phase 0 does not yet enforce the session gate in dev mode (by design) — prod gate exists in
-  `require_owner` but the sign-in HTTP flows land in phase 1.
+- Passkey registration/sign-in is implemented end to end but has only been exercised up to the
+  WebAuthn options; a real-authenticator test (phone + laptop) is still owed.
+- Fresh-install takeover: until the owner finishes setup, `/setup` requires the one-time token from
+  `juggernaught setup-url` (written 0600 to `keys_dir/setup-token`, deleted after setup). Dev mode skips it.
+- Sign-in limits: 10 failures per IP and per account per 15 minutes; failures also feed the steward correlator.
 - The raw-HTML sanitizer is a conservative stripper; phase 4 replaces it with an allow-list parser.
 - Steward runs in-process in phase 0 (honeytokens + correlator); the separate daemon,
   nftables writes and socket arrive in phase 2.

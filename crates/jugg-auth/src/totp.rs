@@ -8,6 +8,8 @@ fn build(secret: Vec<u8>, issuer: &str, account: &str) -> Result<TOTP> {
 }
 
 pub struct Enrolment {
+    /// Base32 secret, shown as "can't scan? enter this key".
+    pub secret_base32: String,
     /// `otpauth://` URL for the QR code.
     pub url: String,
     /// Base64 PNG QR code, shown once.
@@ -24,7 +26,7 @@ pub async fn begin(pool: &SqlitePool, ring: &Keyring, user_id: &str, issuer: &st
         .bind(enc)
         .execute(pool)
         .await?;
-    Ok(Enrolment { url: totp.get_url(), qr_png_base64: totp.get_qr_base64().map_err(AuthError::Other)? })
+    Ok(Enrolment { secret_base32: totp.get_secret_base32(), url: totp.get_url(), qr_png_base64: totp.get_qr_base64().map_err(AuthError::Other)? })
 }
 
 pub async fn confirm(pool: &SqlitePool, ring: &Keyring, user_id: &str, code: &str) -> Result<()> {
@@ -61,4 +63,9 @@ async fn verify_inner(pool: &SqlitePool, ring: &Keyring, user_id: &str, code: &s
         }
     }
     Err(AuthError::Invalid)
+}
+
+pub async fn is_active(pool: &SqlitePool, user_id: &str) -> Result<bool> {
+    let c: Option<Option<i64>> = sqlx::query_scalar("SELECT confirmed_at FROM auth_totp WHERE user_id = ?").bind(user_id).fetch_optional(pool).await?;
+    Ok(matches!(c, Some(Some(_))))
 }

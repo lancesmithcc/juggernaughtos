@@ -24,8 +24,9 @@ cargo install cargo-leptos --locked
 cargo leptos serve
 ```
 
-Open http://127.0.0.1:3700. The first visit opens the setup wizard. Dev data lives
-in `./.jugg-dev` (delete it to start over).
+Open http://localhost:3700 (use `localhost`, not `127.0.0.1`: passkeys need a domain).
+The first visit opens the setup wizard. Dev data lives in `./.jugg-dev` (delete it to
+start over). Without SMTP, magic links are printed in the server log.
 
 ```bash
 cargo test --workspace
@@ -35,13 +36,18 @@ cargo test --workspace
 ./target/debug/juggernaught doctor
 ```
 
-Connect intelligence for local testing (phase 1 moves this into Settings):
+Connect intelligence in **Settings → Intelligence**, or from the server shell:
 
 ```bash
-JUGG_PROVIDER=claude cargo leptos serve
+./target/debug/juggernaught connect claude
 ```
 
-`JUGG_PROVIDER` accepts `claude`, `codex` or `openrouter` (with `OPENROUTER_API_KEY`).
+`connect` accepts `claude`, `codex` (each runs the vendor's own login) or `openrouter`
+(asks for a key, stored encrypted). On a fresh production box, get the one-time setup link with:
+
+```bash
+juggernaught setup-url
+```
 
 ## Hardware
 

@@ -7,12 +7,13 @@ use jugg_crypto::Keyring;
 use sqlx::SqlitePool;
 use webauthn_rs::prelude::*;
 
-pub use webauthn_rs::prelude::{CreationChallengeResponse, PasskeyAuthentication, PasskeyRegistration, PublicKeyCredential, RegisterPublicKeyCredential, RequestChallengeResponse};
+pub use webauthn_rs::prelude::{Webauthn as WebauthnCtx, CreationChallengeResponse, PasskeyAuthentication, PasskeyRegistration, PublicKeyCredential, RegisterPublicKeyCredential, RequestChallengeResponse};
 
 pub fn build(rp_id: &str, origin: &str) -> Result<Webauthn> {
     let origin = Url::parse(origin).map_err(|e| AuthError::Other(e.to_string()))?;
     WebauthnBuilder::new(rp_id, &origin)
-        .and_then(|b| b.rp_name("Juggernaught").build())
+        .map(|b| b.rp_name("Juggernaught"))
+        .and_then(|b| b.build())
         .map_err(|e| AuthError::Other(e.to_string()))
 }
 
@@ -72,4 +73,43 @@ pub async fn finish_login(wa: &Webauthn, pool: &SqlitePool, ring: &Keyring, user
         }
     }
     Ok(())
+}
+
+/// Usernameless sign-in for a single-business box: offer every registered
+/// passkey; the authenticator picks the one it holds.
+pub async fn start_login_any(wa: &Webauthn, pool: &SqlitePool, ring: &Keyring) -> Result<(RequestChallengeResponse, PasskeyAuthentication)> {
+    let users: Vec<String> = sqlx::query_scalar("SELECT DISTINCT user_id FROM auth_passkeys").fetch_all(pool).await?;
+    let mut keys = Vec::new();
+    for u in users {
+        keys.extend(load(pool, ring, &u).await?.into_iter().map(|(_, p)| p));
+    }
+    if keys.is_empty() {
+        return Err(AuthError::Invalid);
+    }
+    wa.start_passkey_authentication(&keys).map_err(|e| AuthError::Other(e.to_string()))
+}
+
+/// Finish usernameless sign-in; returns the user the credential belongs to.
+pub async fn finish_login_any(wa: &Webauthn, pool: &SqlitePool, ring: &Keyring, resp: &PublicKeyCredential, state: &PasskeyAuthentication) -> Result<String> {
+    let result = wa.finish_passkey_authentication(resp, state).map_err(|_| AuthError::Invalid)?;
+    let users: Vec<String> = sqlx::query_scalar("SELECT DISTINCT user_id FROM auth_passkeys").fetch_all(pool).await?;
+    for u in users {
+        for (id, mut pk) in load(pool, ring, &u).await? {
+            if pk.cred_id() == result.cred_id() {
+                if pk.update_credential(&result).is_some() {
+                    let raw = serde_json::to_vec(&pk).map_err(|e| AuthError::Other(e.to_string()))?;
+                    let enc = jugg_crypto::seal(ring, &raw, format!("auth_passkeys:credential:{id}").as_bytes())?;
+                    sqlx::query("UPDATE auth_passkeys SET credential_enc = ? WHERE id = ?").bind(enc).bind(&id).execute(pool).await?;
+                }
+                sqlx::query("UPDATE auth_passkeys SET last_used_at = ? WHERE id = ?").bind(jugg_core::now_unix()).bind(&id).execute(pool).await?;
+                return Ok(u);
+            }
+        }
+    }
+    Err(AuthError::Invalid)
+}
+
+/// Labels of a user's passkeys for the settings list.
+pub async fn list(pool: &SqlitePool, user_id: &str) -> Result<Vec<(String, String, i64)>> {
+    Ok(sqlx::query_as("SELECT id, label, created_at FROM auth_passkeys WHERE user_id = ? ORDER BY created_at").bind(user_id).fetch_all(pool).await?)
 }

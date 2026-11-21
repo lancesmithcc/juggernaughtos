@@ -50,3 +50,7 @@ pub async fn redeem(pool: &SqlitePool, user_id: &str, code: &str) -> Result<()> 
     }
     Err(AuthError::Invalid)
 }
+
+pub async fn remaining(pool: &SqlitePool, user_id: &str) -> Result<i64> {
+    Ok(sqlx::query_scalar("SELECT count(*) FROM auth_recovery_codes WHERE user_id = ? AND used_at IS NULL").bind(user_id).fetch_one(pool).await?)
+}

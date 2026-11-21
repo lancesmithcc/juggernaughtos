@@ -12,6 +12,7 @@
 pub mod magic;
 #[cfg(feature = "passkeys")]
 pub mod passkey;
+pub mod ratelimit;
 pub mod recovery;
 pub mod session;
 pub mod totp;

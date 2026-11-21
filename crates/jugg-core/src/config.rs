@@ -41,8 +41,13 @@ impl Default for Config {
 }
 
 impl Config {
+    /// Development config. Data lives in `$JUGG_DEV_ROOT` or `./.jugg-dev`,
+    /// always as an absolute path so child processes (the MCP bridge launched
+    /// by Claude Code / Codex from a job directory) find the same database.
     pub fn dev() -> Self {
-        let base = PathBuf::from("./.jugg-dev");
+        let base = std::env::var_os("JUGG_DEV_ROOT")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default().join(".jugg-dev"));
         Self {
             data_dir: base.join("data"),
             keys_dir: base.join("keys"),

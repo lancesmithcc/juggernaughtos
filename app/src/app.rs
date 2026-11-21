@@ -63,6 +63,8 @@ pub fn App() -> impl IntoView {
 fn Workspace() -> impl IntoView {
     let (open, set_open) = signal(false);
     let overview = Resource::new(|| (), |_| crate::api::get_overview());
+    // Panels (e.g. Settings → Intelligence) refetch this to update the sidebar pill.
+    provide_context(overview);
     view! {
         <div class="workspace" class:sidebar-open=open>
             <aside class="sidebar" aria-label="Main">

@@ -1,8 +1,9 @@
 //! First-run wizard: builds the brand, then the owner's passwordless sign-in.
 
 use crate::api::{complete_setup, WizardInput};
+use crate::pages::account::{AddPasskey, RecoveryCodes, TotpEnroll};
 use leptos::prelude::*;
-use leptos_router::hooks::use_navigate;
+use leptos_router::hooks::use_query_map;
 
 const TRAITS: &[&str] = &["Warm", "Bold", "Calm", "Playful", "Premium", "Down-to-earth", "Technical", "Rebellious", "Trustworthy", "Minimal"];
 const SWATCHES: &[(&str, &str)] = &[
@@ -31,16 +32,13 @@ pub fn SetupPage() -> impl IntoView {
         methods: vec!["passkey".into(), "magic_link".into()],
         ..Default::default()
     });
+    let query = use_query_map();
     let save = Action::new(move |input: &WizardInput| {
-        let input = input.clone();
+        let mut input = input.clone();
+        input.token = query.with_untracked(|q| q.get("token").unwrap_or_default());
         async move { complete_setup(input).await }
     });
-    let navigate = use_navigate();
-    Effect::new(move |_| {
-        if let Some(Ok(())) = save.value().get() {
-            navigate("/", Default::default());
-        }
-    });
+    let finished = move || save.value().with(|v| matches!(v, Some(Ok(_))));
 
     let titles = ["Your business", "Who it's for", "The look", "Your logo", "Signing in"];
     let can_next = move || {
@@ -54,6 +52,22 @@ pub fn SetupPage() -> impl IntoView {
 
     view! {
         <div class="setup">
+            <Show when=finished fallback=move || view! { <WizardCard step=step form=form save=save titles=titles can_next=can_next/> }>
+                <SecureStep save=save form=form/>
+            </Show>
+        </div>
+    }
+}
+
+#[component]
+fn WizardCard(
+    step: RwSignal<usize>,
+    form: RwSignal<WizardInput>,
+    save: Action<WizardInput, Result<crate::api::SetupResult, ServerFnError>>,
+    titles: [&'static str; 5],
+    can_next: impl Fn() -> bool + Copy + Send + Sync + 'static,
+) -> impl IntoView {
+    view! {
             <div class="setup-card">
                 <header class="setup-head">
                     <span class="mark" aria-hidden="true">"J"</span>
@@ -192,6 +206,36 @@ pub fn SetupPage() -> impl IntoView {
                     }}
                 </footer>
             </div>
+    }
+}
+
+/// After the workspace exists: lock it down before going in.
+#[component]
+fn SecureStep(save: Action<WizardInput, Result<crate::api::SetupResult, ServerFnError>>, form: RwSignal<WizardInput>) -> impl IntoView {
+    let codes = save.value().get_untracked().and_then(|r| r.ok()).map(|r| r.recovery_codes).unwrap_or_default();
+    let wants = move |m: &str| form.with_untracked(|f| f.methods.iter().any(|x| x == m));
+    let (want_passkey, want_totp) = (wants("passkey"), wants("totp"));
+    view! {
+        <div class="setup-card">
+            <header class="setup-head"><span class="mark" aria-hidden="true">"J"</span><span class="pill ok">"Workspace created"</span></header>
+            <div class="setup-body">
+                <h1 class="setup-title">"Secure your sign-in"</h1>
+                <div class="fields">
+                    {want_passkey.then(|| view! {
+                        <section class="secure-block"><h2>"Face or fingerprint"</h2><AddPasskey on_done=|_| ()/></section>
+                    })}
+                    {want_totp.then(|| view! {
+                        <section class="secure-block"><h2>"Authenticator app"</h2><TotpEnroll on_done=|_| ()/></section>
+                    })}
+                    <section class="secure-block"><h2>"Recovery codes"</h2><RecoveryCodes codes=codes/></section>
+                    {form.with_untracked(|f| f.methods.iter().any(|m| m == "magic_link")).then(|| view! {
+                        <p class="hint">{format!("Email links will go to {}.", form.with_untracked(|f| f.owner_email.clone()))}</p>
+                    })}
+                </div>
+            </div>
+            <footer class="setup-foot end">
+                <button class="btn primary" on:click=|_| crate::client::go("/")>"Open my workspace"</button>
+            </footer>
         </div>
     }
 }
@@ -200,7 +244,7 @@ pub fn SetupPage() -> impl IntoView {
 fn Method(form: RwSignal<WizardInput>, key: &'static str, title: &'static str, body: &'static str) -> impl IntoView {
     let on = move || form.with(|f| f.methods.iter().any(|m| m == key));
     view! {
-        <button type="button" class="method" class:on=on aria-pressed=move || on().to_string()
+        <button type="button" class="method" class:on=on aria-label=title aria-pressed=move || on().to_string()
             on:click=move |_| form.update(|f| {
                 if let Some(p) = f.methods.iter().position(|m| m == key) { f.methods.remove(p); } else { f.methods.push(key.into()); }
             })>
