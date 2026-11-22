@@ -69,3 +69,7 @@ ssr = [
     "dep:jugg-tools", "dep:jugg-web", "dep:jugg-steward", "dep:jugg-updater",
     "leptos/ssr", "leptos/nonce", "leptos_meta/ssr", "leptos_router/ssr",
 ]
+
+[dev-dependencies]
+proptest.workspace = true
+tempfile = "3"

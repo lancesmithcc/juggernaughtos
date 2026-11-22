@@ -154,6 +154,30 @@ mod tests {
         ToolContext { job_dir: dir.into(), brand: Arc::new(jugg_brand::BrandStandards::default()), approved: false }
     }
 
+    use proptest::prelude::Strategy as _;
+    proptest::proptest! {
+        #![proptest_config(proptest::prelude::ProptestConfig::with_cases(256))]
+        #[test]
+        fn handler_answers_any_request_without_panicking(
+            method in proptest::prop_oneof![proptest::sample::select(vec!["initialize", "tools/list", "tools/call", "ping", "notifications/initialized"]).prop_map(String::from), ".{0,20}"],
+            name in "[a-z_]{0,12}",
+            junk in ".{0,40}",
+            with_id in proptest::prelude::any::<bool>(),
+        ) {
+            let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+            let dir = tempfile::tempdir().unwrap();
+            let reg = Registry::standard(&crate::lock::ToolsLock::default(), dir.path());
+            let mut req = serde_json::json!({ "jsonrpc": "2.0", "method": method, "params": { "name": format!("zz_{name}"), "arguments": { "x": junk } } });
+            if with_id { req["id"] = serde_json::json!(7); }
+            let resp = rt.block_on(handle(&reg, &ctx(dir.path()), &req));
+            if let Some(r) = resp {
+                proptest::prop_assert_eq!(&r["jsonrpc"], "2.0");
+                proptest::prop_assert!(r.get("result").is_some() || r.get("error").is_some());
+            }
+            let _ = rt.block_on(handle(&reg, &ctx(dir.path()), &serde_json::json!(junk)));
+        }
+    }
+
     #[tokio::test]
     async fn lists_and_calls_tools() {
         let dir = tempfile::tempdir().unwrap();

@@ -26,11 +26,11 @@ secure and up to date. The owner talks to it in plain language.
 │  │ providers +    │  │ registry + │  │ (bubblewrap) │  │ (pinned, signed) │  │
 │  │ agent loop     │  │ approvals  │  └──────────────┘  └──────────────────┘  │
 │  └─────┬──────────┘  └─────▲──────┘                                          │
-│        │ spawn             │ MCP stdio (`juggernaught mcp`)                  │
+│        │ spawn (bwrap)     │ unix socket + per-turn token                    │
 │        ▼                   │                                                 │
-│  claude -p / codex exec ───┘   (built-in shell/file tools disabled)          │
+│  claude -p / codex exec ── mcp-proxy  (sandboxed; shell/file tools disabled) │
 │                                                                              │
-│  jugg-db: SQLite WAL ── field-encrypted columns ── keys in /var/lib/…/keys   │
+│  jugg-db: SQLite WAL ── field-encrypted columns ── keys sealed (systemd-creds)│
 └──────────────────────────────────────────────────────────────────────────────┘
          │ unix socket (events in, status out)
 ┌────────▼─────────────────────────────────────────────────────────────────────┐
@@ -46,10 +46,10 @@ secure and up to date. The owner talks to it in plain language.
 | Process | Runs as | Privilege | Notes |
 |---|---|---|---|
 | `juggernaught serve` | `jugg` | none; `CAP_NET_BIND_SERVICE` for 80/443 | admin app, public site, API, job workers |
-| `juggernaught mcp` | `jugg` | none | spawned per conversation by Claude Code / Codex; stdio only |
+| `juggernaught mcp-proxy` | `jugg` in the agent sandbox | none | spawned by Claude Code / Codex; relays stdio to the app's tool socket with a per-turn token, holds no keys |
 | `jugg-steward` | `jugg-steward` | `CAP_NET_ADMIN` | owns `steward.db`; app cannot delete security history |
 | external tools | `jugg` inside bubblewrap | none | RO system, job dir only writable, no network unless declared, cgroup memory/CPU caps |
-| `claude` / `codex` CLIs | `jugg` | none | private HOME, cwd = job dir, only our MCP server attached |
+| `claude` / `codex` CLIs | `jugg` inside bubblewrap | none | RO system, private HOME, job dir only writable, cleared env, only our MCP server attached |
 
 ## 2. Workspace
 
@@ -87,11 +87,11 @@ recovery codes (Argon2id only), keys (filesystem, 0600, outside the DB).
 ```
 owner message ─▶ system prompt (brand DESIGN.md + business context + house rules)
               ─▶ Provider::run
-                   ├─ ClaudeCodeCli: claude -p --output-format stream-json
-                   │     --strict-mcp-config --mcp-config {jugg: juggernaught mcp}
-                   │     --allowedTools mcp__jugg --disallowedTools Bash,Edit,Write,…
-                   ├─ CodexCli:      codex exec --json --sandbox read-only
-                   │     -c mcp_servers.jugg.command=juggernaught
+                   ├─ ClaudeCodeCli: bwrap … claude -p --output-format stream-json
+                   │     --strict-mcp-config --mcp-config {jugg: juggernaught mcp-proxy}
+                   │     --allowedTools mcp__jugg --disallowedTools Bash,Edit,Write,Read,WebFetch,…
+                   ├─ CodexCli:      bwrap … codex exec --json --sandbox read-only
+                   │     -c mcp_servers.jugg.command=juggernaught (mcp-proxy, token in env)
                    └─ OpenRouter / APIs: agent_loop (≤24 steps) over the same Registry
               ─▶ AgentEvent stream (text, tool started/finished, approval, usage)
               ─▶ UI + encrypted transcript + usage table
@@ -134,4 +134,4 @@ through the durable `jobs` queue with heartbeats and retries.
 | **3 — Tools for real** ✅ | Hash-pinned tool installer (`juggernaught tools install/status/verify`, upstream release tarballs, canary before activation), only-installed tools offered to the agent, native print/email tools (business card PDF with bleed + TrimBox, email signature), brand gate (Lab ΔE colour checks, fonts, active-content checks for SVG/HTML/PDF), content-addressed asset library with previews, approve/override flow, background job queue + worker | Chat “make a business card” → Claude Code → MCP → PDF in Assets with gate report, approved in the UI; 17/17 Linux smoke checks incl. real pinned tool installs |
 | **4 — Website builder** ✅ | Agent tools (site_pages, site_save_page, site_override, site_publish, site_rollback), owner previews, approval cards in chat for publish/rollback, immutable releases + atomic switch + rollback, image pipeline (approved assets only, ≤1600 px, JPEG/PNG), self-hosted brand fonts (bundled Jakarta, Google Fonts repo on demand), hashed CSS, sitemap/robots/404/thanks, favicon, encrypted contact-form inbox with honeypot + rate limit, starter homepage from the setup wizard | Chat → 2 pages → approval → live; Lighthouse 100/100/100/100 on the generated homepage (twice) |
 | **5 — Brand studio** ✅ | Vector logo concepts from the brand (monogram, wordmark, badge, initials; text outlined, on-palette), adopt → primary/reversed/one-colour/icon + brand guidelines PDF (6 pages) + launch post; logo in site header, favicon and admin sidebar; social posts at four platform sizes; brand book regeneration; versioned brand history; optional image generation with the owner's OpenAI key; Google Fonts loaded into the print renderer on demand | Fresh wizard → pick logo → full kit in Assets; published starter site uses logo + brand fonts; Lighthouse 100×4 |
-| **6 — Hardening** | TPM-sealed KEK / boot unlock, audit-chain export, pen-test, fuzzing of parsers, SBOM | External pen-test: no high findings |
+| **6 — Hardening** ✅ (internal) | `cargo audit` clean (sqlx 0.9), agent CLIs in bubblewrap with MCP over a token-gated socket relay, ammonia sanitizer, KEK + signing key sealed with systemd-creds (TPM2 when present), audit export + offline verify against a pinned key fingerprint, property tests on every untrusted-input parser, CycloneDX SBOM per release, review in SECURITY.md §8 | 23/23 Linux smoke checks incl. seal → refuse without credentials → run on credentials, offline audit verify + tamper rejection; bubblewrap isolation test on Linux; live chat → Claude Code → mcp-proxy → tool. External pen-test still owed (needs a third party) |

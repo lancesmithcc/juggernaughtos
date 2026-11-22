@@ -15,6 +15,10 @@ cp -r "$ROOT/target/site" "$STAGE/site"
 cp -r "$ROOT/deploy" "$STAGE/deploy"
 cp "$ROOT/tools.lock.toml" "$ROOT/install.sh" "$ROOT/README.md" "$STAGE/"
 echo "v${VER}-${SHA}" > "$STAGE/VERSION"
+if [[ -f "$ROOT/target/sbom.cdx.json" ]]; then
+  cp "$ROOT/target/sbom.cdx.json" "$STAGE/sbom.cdx.json"
+  cp "$ROOT/target/sbom.cdx.json" "$OUT/$NAME.sbom.cdx.json"
+fi
 tar -C "$(dirname "$STAGE")" -czf "$OUT/$NAME.tar.gz" "$NAME"
 (cd "$OUT" && sha256sum "$NAME.tar.gz" > "$NAME.tar.gz.sha256")
 echo "$OUT/$NAME.tar.gz ($(du -h "$OUT/$NAME.tar.gz" | cut -f1)) v${VER}-${SHA}"

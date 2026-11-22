@@ -42,6 +42,10 @@ pub fn cli_command(bin: &str, sandbox: Option<&CliSandbox>, cwd: &std::path::Pat
     for ro in ["/usr", "/lib", "/lib64", "/bin", "/sbin", "/etc"] {
         c.args(["--ro-bind-try", ro, ro]);
     }
+    // Our own config and sealed credentials are not the agent's business.
+    if std::path::Path::new("/etc/juggernaught").exists() {
+        c.args(["--tmpfs", "/etc/juggernaught"]);
+    }
     for p in &sb.read_only {
         let p = p.to_string_lossy().to_string();
         c.args(["--ro-bind-try", &p, &p]);
@@ -161,6 +165,14 @@ impl Provider for ClaudeCodeCli {
             cmd.args(["--model", m]);
         }
         cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).kill_on_drop(true);
+        // The config holds this turn's MCP token: it must not outlive the run, even on error.
+        struct RemoveOnDrop(std::path::PathBuf);
+        impl Drop for RemoveOnDrop {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.0);
+            }
+        }
+        let _cleanup = RemoveOnDrop(mcp_file.clone());
         let child = cmd.spawn().map_err(|e| AiError::Unavailable(e.to_string()))?;
         let mut parser = ClaudeParser::default();
         pump(child, transcript(&req), &tx, move |v| parser.parse(v)).await
@@ -309,6 +321,42 @@ mod tests {
         assert!(joined.contains("--clearenv") && joined.contains("--unshare-pid") && joined.contains("--die-with-parent"));
         assert!(!args.iter().any(|a| a == "/var/lib/juggernaught" || a.ends_with("/keys") || a.ends_with(".db")), "keys and database are never mounted: {joined}");
         assert!(DISALLOWED_CLAUDE_TOOLS.contains("Read") && DISALLOWED_CLAUDE_TOOLS.contains("Grep") && DISALLOWED_CLAUDE_TOOLS.contains("Bash"));
+    }
+
+    /// Runs only where bubblewrap works (Linux with user namespaces): proves the
+    /// sandbox really hides the data dir and the parent's environment.
+    #[tokio::test]
+    async fn sandbox_really_isolates_on_linux() {
+        if !std::process::Command::new("bwrap").args(["--ro-bind", "/", "/", "--proc", "/proc", "--unshare-pid", "true"]).status().map(|s| s.success()).unwrap_or(false) {
+            eprintln!("bwrap unavailable here; skipping");
+            return;
+        }
+        let base = tempfile::tempdir_in("/var/tmp").unwrap();
+        let data = base.path().join("data");
+        let keys = data.join("keys");
+        std::fs::create_dir_all(&keys).unwrap();
+        std::fs::write(keys.join("kek-1.key"), b"secret").unwrap();
+        let job = data.join("jobs/j1");
+        std::fs::create_dir_all(&job).unwrap();
+        let sb = CliSandbox { home: data.join("agent-home"), read_only: vec![], read_write: vec![job.clone()] };
+        std::env::set_var("JUGG_TEST_SECRET", "leak");
+        let script = format!(
+            "test -e {k} && echo SEEN_KEY; test -e {d}/jobs && ls {d} | tr '\\n' ' ' | sed 's/^/DATA:/'; echo ok > {j}/out && echo WROTE; echo HOME=$HOME; env | grep -c JUGG_TEST_SECRET | sed 's/^/ENV:/'; ps -e 2>/dev/null | wc -l | sed 's/^/PROCS:/'",
+            k = keys.join("kek-1.key").display(),
+            d = data.display(),
+            j = job.display()
+        );
+        let mut c = cli_command("sh", Some(&sb), &job);
+        c.arg("-c").arg(&script);
+        let out = c.output().await.unwrap();
+        let text = format!("{}\nstderr: {}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+        assert!(!text.contains("SEEN_KEY"), "key visible inside sandbox: {text}");
+        assert!(text.contains("WROTE") && std::fs::read_to_string(job.join("out")).unwrap().trim() == "ok", "job dir must be writable: {text}");
+        assert!(text.contains(&format!("HOME={}", data.join("agent-home").display())), "{text}");
+        assert!(text.contains("ENV:0"), "parent environment leaked: {text}");
+        if let Some(line) = text.lines().find(|l| l.starts_with("DATA:")) {
+            assert!(!line.contains("keys"), "data dir listing shows keys: {line}");
+        }
     }
 
     #[test]

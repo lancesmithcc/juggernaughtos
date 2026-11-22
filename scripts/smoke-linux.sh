@@ -9,7 +9,7 @@ TARBALL="dist/juggernaught-linux-${ARCH}.tar.gz"
 docker run --rm --cap-add NET_ADMIN -v "$PWD/dist":/dist:ro -v "$PWD/install.sh":/install.sh:ro ubuntu:24.04 bash -euo pipefail -c '
   ok()   { printf "\033[32mPASS\033[0m %s\n" "$*"; }
   fail() { printf "\033[31mFAIL\033[0m %s\n" "$*"; exit 1; }
-  apt-get update -qq && apt-get install -y -qq --no-install-recommends curl ca-certificates iproute2 util-linux >/dev/null
+  apt-get update -qq && apt-get install -y -qq --no-install-recommends curl ca-certificates iproute2 util-linux systemd >/dev/null
   JUGG_SKIP_TOOLS=1 bash /install.sh --tls proxy --tarball /dist/'"$(basename "$TARBALL")"' --no-systemd --no-ssh-hardening --yes
   C=/etc/juggernaught/juggernaught.toml
   sed -i "s/^listen_http = .*/listen_http = \"0.0.0.0:8080\"/" $C
@@ -47,5 +47,16 @@ docker run --rm --cap-add NET_ADMIN -v "$PWD/dist":/dist:ro -v "$PWD/install.sh"
   JUGG_CONFIG=$C /usr/local/bin/juggernaught tools install pdfcraft impeccable > /tmp/tools.txt 2>&1 && ok "pinned tools downloaded, hash-verified, smoke-tested" || { cat /tmp/tools.txt; fail "tool install"; }
   JUGG_CONFIG=$C /usr/local/bin/juggernaught tools verify > /tmp/verify.txt 2>&1 && ok "tool canaries pass" || { cat /tmp/verify.txt; fail "tool verify"; }
   JUGG_CONFIG=$C /usr/local/bin/juggernaught tools status > /tmp/status.txt; grep -q "pdfcraft .* ready" /tmp/status.txt && ok "tools status reports pdfcraft ready" || { cat /tmp/status.txt; fail "tools status"; }
+  as_jugg /usr/local/bin/juggernaught audit export > /tmp/audit.json && FP=$(grep -o "fingerprint [0-9a-f:]*" /tmp/doctor.txt | cut -d" " -f2) \
+    && /usr/local/bin/juggernaught audit verify /tmp/audit.json --fingerprint "$FP" > /tmp/av.txt && grep -q "audit export ok" /tmp/av.txt && ok "audit export verifies offline against pinned key" || { cat /tmp/av.txt; fail "audit verify"; }
+  sed -i "s/\"exported_at\": [0-9]*/\"exported_at\": 1/" /tmp/audit.json
+  /usr/local/bin/juggernaught audit verify /tmp/audit.json > /dev/null 2>&1 && fail "tampered export accepted" || ok "tampered audit export rejected"
+  JUGG_CONFIG=$C /usr/local/bin/juggernaught backup init-recovery --out /root/rk.json >/dev/null
+  JUGG_CONFIG=$C /usr/local/bin/juggernaught keys seal > /tmp/seal.txt 2>&1 && grep -q "Sealed 2 key" /tmp/seal.txt && ok "keys sealed with systemd-creds" || { cat /tmp/seal.txt; fail "keys seal"; }
+  [[ ! -e /var/lib/juggernaught/keys/kek-1.key && ! -e /var/lib/juggernaught/keys/box-signing.mldsa65.pk8 ]] && ok "plaintext keys destroyed" || fail "plaintext keys destroyed"
+  as_jugg /usr/local/bin/juggernaught doctor > /tmp/nocreds.txt 2>&1 && fail "sealed box started without credentials" || { grep -q "sealed" /tmp/nocreds.txt && ok "sealed box refuses to run without its credentials"; } || { cat /tmp/nocreds.txt; fail "no-credentials refusal"; }
+  install -d -o jugg -g jugg -m 0700 /tmp/creds
+  for f in /etc/juggernaught/creds/*.cred; do n=$(basename "$f" .cred); systemd-creds decrypt --name="$n" "$f" "/tmp/creds/$n"; done; chown jugg:jugg /tmp/creds/*
+  as_jugg env CREDENTIALS_DIRECTORY=/tmp/creds /usr/local/bin/juggernaught doctor > /tmp/sealed.txt 2>&1 && grep -q "audit chain  ok" /tmp/sealed.txt && grep -q "sealed, from systemd credentials" /tmp/sealed.txt && ok "app runs on sealed keys (same data, audit chain verifies)" || { cat /tmp/sealed.txt; fail "sealed doctor"; }
   echo; echo "ALL SMOKE TESTS PASSED"
 '

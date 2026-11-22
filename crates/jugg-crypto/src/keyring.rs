@@ -106,6 +106,9 @@ impl Keyring {
 
     /// Create a new KEK and make it active. Returns the new id.
     pub fn rotate(&mut self) -> Result<u8> {
+        if !self.dir.as_os_str().is_empty() && is_sealed(&self.dir) {
+            return Err(CryptoError::KeyStore("keys are sealed: run `juggernaught keys unseal`, rotate, then seal again".into()));
+        }
         let id = self.keks.last().map(|(id, _)| id + 1).unwrap_or(1);
         let key = crate::random_bytes::<32>();
         if !self.dir.as_os_str().is_empty() {

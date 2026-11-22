@@ -86,8 +86,8 @@ say "Installing Juggernaught OS on $PRETTY_NAME ($ARCH, ${MEM_MB} MB RAM)"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq --no-install-recommends \
-  ca-certificates curl tar nftables bubblewrap sqlite3 unattended-upgrades libssl3 >/dev/null \
-  || apt-get install -y -qq --no-install-recommends ca-certificates curl tar nftables bubblewrap sqlite3 unattended-upgrades libssl3t64 >/dev/null
+  ca-certificates curl tar nftables bubblewrap sqlite3 systemd unattended-upgrades libssl3 >/dev/null \
+  || apt-get install -y -qq --no-install-recommends ca-certificates curl tar nftables bubblewrap sqlite3 systemd unattended-upgrades libssl3t64 >/dev/null
 
 # ------------------------------------------------------------------ users + dirs
 id jugg >/dev/null 2>&1 || useradd --system --home-dir "$DATA" --shell /usr/sbin/nologin --user-group jugg
@@ -262,3 +262,6 @@ fi
 echo
 echo "    Then create the owner's offline recovery key, copy it OFF this server, and delete it here:"
 echo "    sudo JUGG_CONFIG=$CONF juggernaught backup init-recovery --out /root/juggernaught-recovery-key.json"
+echo
+echo "    Then seal the encryption keys into systemd credentials (bound to the TPM2 chip if this machine has one):"
+echo "    sudo JUGG_CONFIG=$CONF juggernaught keys seal"

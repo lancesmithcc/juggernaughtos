@@ -70,6 +70,7 @@ secrecy = { version = "0.10", features = ["serde"] }
 zeroize = { version = "1", features = ["derive"] }
 base64 = "0.22"
 hex = "0.4"
+proptest = { version = "1", default-features = false, features = ["std"] }
 
 # misc
 anyhow = "1"

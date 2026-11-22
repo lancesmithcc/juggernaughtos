@@ -59,6 +59,16 @@ async fn main() {
             #[command(subcommand)]
             cmd: ToolsCmd,
         },
+        /// Seal the encryption + signing keys into systemd credentials (TPM2 when present).
+        Keys {
+            #[command(subcommand)]
+            cmd: KeysCmd,
+        },
+        /// Export the signed audit log, or verify an export offline.
+        Audit {
+            #[command(subcommand)]
+            cmd: AuditCmd,
+        },
         /// Print the nftables ruleset for this box.
         Firewall {
             /// Allow SSH only from these addresses/ranges (e.g. 100.64.0.0/10 for Tailscale).
@@ -67,6 +77,29 @@ async fn main() {
             #[arg(long = "ssh-port", default_value_t = 22)]
             ssh_port: u16,
         },
+    }
+
+    #[derive(Subcommand)]
+    enum AuditCmd {
+        /// Write the whole audit log + signed checkpoints as JSON to stdout.
+        Export,
+        /// Check an export with nothing but the file (works on any machine).
+        Verify {
+            file: std::path::PathBuf,
+            /// The box signing-key fingerprint from `juggernaught doctor`, recorded somewhere safe.
+            #[arg(long)]
+            fingerprint: Option<String>,
+        },
+    }
+
+    #[derive(Subcommand)]
+    enum KeysCmd {
+        /// Show whether the keys are sealed and where they come from.
+        Status,
+        /// Seal every key with systemd-creds and destroy the plaintext files (root).
+        Seal,
+        /// Turn sealed credentials back into key files (root; to move hardware).
+        Unseal,
     }
 
     #[derive(Subcommand)]
@@ -122,6 +155,28 @@ async fn main() {
         }
         return;
     }
+    if let Some(Cmd::Audit { cmd: AuditCmd::Verify { file, fingerprint } }) = &cli.cmd {
+        let x: jugg_db::audit::Export = match std::fs::read(file).map_err(|e| e.to_string()).and_then(|b| serde_json::from_slice(&b).map_err(|e| e.to_string())) {
+            Ok(x) => x,
+            Err(e) => {
+                eprintln!("{}: {e}", file.display());
+                std::process::exit(2);
+            }
+        };
+        match jugg_db::audit::verify_export(&x, fingerprint.as_deref()) {
+            Ok(v) => {
+                println!("audit export ok: {} entries, {} signed checkpoints, signed at {} by key {}", v.entries, v.checkpoints, x.exported_at, v.fingerprint);
+                if fingerprint.is_none() {
+                    println!("note: no --fingerprint given, so this proves internal consistency only; pin the key to prove it came from your box.");
+                }
+            }
+            Err(e) => {
+                eprintln!("audit export FAILED: {e}");
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
     let cfg = match &cli.config {
         Some(p) => jugg_core::Config::load(p).unwrap_or_else(|e| panic!("config: {e}")),
         None => jugg_core::Config::dev(),
@@ -131,7 +186,7 @@ async fn main() {
         std::env::set_var("JUGG_DEV_ROOT", cfg.data_dir.parent().unwrap_or(&cfg.data_dir));
     }
 
-    let quiet = matches!(cli.cmd, Some(Cmd::Mcp { .. }) | Some(Cmd::SetupUrl) | Some(Cmd::Doctor) | Some(Cmd::Connect { .. }) | Some(Cmd::Firewall { .. }) | Some(Cmd::Steward { status: true }) | Some(Cmd::Tools { .. }));
+    let quiet = matches!(cli.cmd, Some(Cmd::Mcp { .. }) | Some(Cmd::SetupUrl) | Some(Cmd::Doctor) | Some(Cmd::Connect { .. }) | Some(Cmd::Firewall { .. }) | Some(Cmd::Keys { .. }) | Some(Cmd::Audit { .. }) | Some(Cmd::Steward { status: true }) | Some(Cmd::Tools { .. }));
     let filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| if quiet { "warn,sqlx=warn".into() } else { "info,sqlx=warn".into() });
     tracing_subscriber::fmt().with_env_filter(filter).with_writer(std::io::stderr).init();
 
@@ -150,6 +205,26 @@ async fn main() {
 
     // Commands that must not touch the app's keys or database.
     match &cli.cmd {
+        Some(Cmd::Keys { cmd }) => {
+            let p = juggernaught::keys::Paths {
+                keys_dir: cfg.keys_dir.clone(),
+                cred_dir: cli.config.as_ref().and_then(|c| c.parent()).map(|d| d.join("creds")).unwrap_or_else(|| cfg.data_dir.join("creds")),
+                unit_dir: "/etc/systemd/system".into(),
+            };
+            let r = match cmd {
+                KeysCmd::Status => Ok(juggernaught::keys::status(&p)),
+                KeysCmd::Seal => juggernaught::keys::seal(&p, &cfg.backup.recovery_public_key),
+                KeysCmd::Unseal => juggernaught::keys::unseal(&p, "jugg"),
+            };
+            match r {
+                Ok(msg) => println!("{}", msg.trim_end()),
+                Err(e) => {
+                    eprintln!("keys: {e}");
+                    std::process::exit(1);
+                }
+            }
+            return;
+        }
         Some(Cmd::Firewall { ssh_allow, ssh_port }) => {
             for a in ssh_allow {
                 if a.parse::<std::net::IpAddr>().is_err() && !a.split_once('/').is_some_and(|(ip, bits)| ip.parse::<std::net::IpAddr>().is_ok() && bits.parse::<u8>().is_ok()) {
@@ -286,10 +361,19 @@ async fn main() {
     if cfg.dev {
         leptos_options.site_addr = cfg.listen_http.parse().expect("listen address");
     }
+    #[cfg(unix)]
+    if !cfg.dev && !matches!(cli.cmd, None | Some(Cmd::Serve)) && juggernaught::keys::should_reexec(&cfg.keys_dir) {
+        if let Some(conf) = &cli.config {
+            let creds = conf.parent().map(|d| d.join("creds")).unwrap_or_default();
+            let e = juggernaught::keys::reexec_with_credentials(conf, &creds, "jugg");
+            eprintln!("keys are sealed and systemd-run failed ({e}); run this with sudo");
+            std::process::exit(1);
+        }
+    }
     let state = AppState::init(cfg, leptos_options.clone()).await.unwrap_or_else(|e| panic!("startup: {e}"));
 
     match cli.cmd.unwrap_or(Cmd::Serve) {
-        Cmd::SetupUrl | Cmd::Firewall { .. } | Cmd::Steward { .. } | Cmd::Tools { .. } | Cmd::McpProxy { .. } => unreachable!(),
+        Cmd::SetupUrl | Cmd::Keys { .. } | Cmd::Firewall { .. } | Cmd::Steward { .. } | Cmd::Tools { .. } | Cmd::McpProxy { .. } => unreachable!(),
         Cmd::Backup { cmd } => match cmd {
             BackupCmd::Create => {
                 let tmp = state.cfg.data_dir.join(".backup-db.sqlite");
@@ -406,11 +490,18 @@ async fn main() {
                 }
             }
         }
+        Cmd::Audit { cmd } => match cmd {
+            AuditCmd::Export => {
+                let x = jugg_db::audit::export(&state.pool, &state.signer).await.unwrap_or_else(|e| panic!("export: {e}"));
+                println!("{}", serde_json::to_string_pretty(&x).expect("json"));
+            }
+            AuditCmd::Verify { .. } => unreachable!(),
+        },
         Cmd::Doctor => {
             let provider = state.provider().await;
             println!("database     ok  {}", state.cfg.db_path().display());
-            println!("keyring      ok  KEK #{}", state.ring.active_id());
-            println!("signing key  ok  ML-DSA-65 ({} byte public key)", state.signer.public_key().len());
+            println!("keyring      ok  KEK #{} ({})", state.ring.active_id(), if jugg_crypto::is_sealed(&state.cfg.keys_dir) { "sealed, from systemd credentials" } else { "plaintext key files; seal with `juggernaught keys seal`" });
+            println!("signing key  ok  ML-DSA-65, fingerprint {}", jugg_db::audit::fingerprint(&state.signer.public_key()));
             println!("tls groups   {}", tls_provider_groups().join(", "));
             println!("admin        {}", admin_origin(&state.cfg));
             println!("mail         {}", if state.mailer.is_some() { "SMTP configured" } else { "not configured (magic links only logged in dev)" });
@@ -419,7 +510,10 @@ async fn main() {
                 println!("tool         {:<14} {:?}", t.name, t.risk);
             }
             match jugg_db::audit::verify_chain(&state.pool).await {
-                Ok(None) => println!("audit chain  ok"),
+                Ok(None) => match jugg_db::audit::export(&state.pool, &state.signer).await.map_err(|e| e.to_string()).and_then(|x| jugg_db::audit::verify_export(&x, None)) {
+                    Ok(v) => println!("audit chain  ok  {} entries, {} signed checkpoints verified", v.entries, v.checkpoints),
+                    Err(e) => println!("audit chain  BROKEN {e}"),
+                },
                 Ok(Some(seq)) => println!("audit chain  BROKEN at seq {seq}"),
                 Err(e) => println!("audit chain  error {e}"),
             }

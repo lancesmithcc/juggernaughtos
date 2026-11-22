@@ -266,6 +266,16 @@ fn internal_links(p: &Page) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+    proptest::proptest! {
+        #[test]
+        fn valid_slugs_stay_inside_the_release(s in "/?[a-z0-9./\\-]{0,20}") {
+            if super::valid_slug(&s) {
+                let p = super::page_path(&s);
+                proptest::prop_assert!(!p.starts_with('/') && !p.contains("..") && !p.contains('\\'), "{s} -> {p}");
+                proptest::prop_assert!(p.ends_with("index.html"));
+            }
+        }
+    }
     use super::*;
     use crate::{Link, Tone};
 

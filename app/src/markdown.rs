@@ -38,6 +38,56 @@ pub fn render(md: &str) -> String {
 mod tests {
     use super::render;
 
+    /// Every `<` in sanitized output starts a real tag (text `<` is escaped), so
+    /// checking tag bodies is enough to prove no script, handler or bad URL survived.
+    fn tags_are_safe(out: &str) -> Result<(), String> {
+        for tag in out.split('<').skip(1).map(|t| t.split('>').next().unwrap_or("").to_ascii_lowercase()) {
+            let name = tag.trim_start_matches('/').split(|c: char| c.is_whitespace()).next().unwrap_or("");
+            if ["script", "iframe", "object", "embed", "style", "svg", "math", "form", "input", "base", "meta", "link"].contains(&name) {
+                return Err(format!("tag <{tag}>"));
+            }
+            for attr in tag.split_whitespace().skip(1) {
+                let key = attr.split('=').next().unwrap_or("");
+                if key.starts_with("on") || key == "style" || key == "srcdoc" || key == "formaction" {
+                    return Err(format!("attribute {attr} in <{tag}>"));
+                }
+            }
+            let squashed: String = tag.chars().filter(|c| !c.is_whitespace()).collect();
+            for bad in ["=\"javascript:", "=\"vbscript:", "=\"data:", "=javascript:", "=data:"] {
+                if squashed.contains(bad) {
+                    return Err(format!("url {bad} in <{tag}>"));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    const HOSTILE: &[&str] = &[
+        "<script>alert(1)</script>", "<SCRIPT SRC=//x.js>", "<img src=x onerror=alert(1)>", "<a href=\"javascript:alert(1)\">x</a>",
+        "<a href=\" jaVa&#115;cript:alert(1)\">x</a>", "<a href=\"data:text/html,<script>\">x</a>", "<svg onload=alert(1)>", "<iframe srcdoc=\"<b>\">",
+        "<p style=\"background:url(javascript:x)\">", "<math><mi xlink:href=\"javascript:x\">", "<form action=x><input>", "<base href=//evil>",
+        "<!--", "-->", "<![CDATA[", "]]>", "\"", "'", "<", ">", "&", "<p>", "</p>", "<a href=\"https://ok.example\">ok</a>", "<details open ontoggle=x>",
+        "<img src=\"https://ok/x.png\" alt=\"a\">", "<table><tr><td colspan=2 onclick=x>", "<noscript><p title=\"</noscript><img src=x onerror=x>\">",
+        "<a href=\"vbscript:x\">", "<object data=x>", "<meta http-equiv=refresh content=0;url=x>", "<style>@import x</style>", "<b>", "</b>",
+    ];
+
+    fn hostile_html() -> impl proptest::strategy::Strategy<Value = String> {
+        use proptest::prelude::*;
+        proptest::collection::vec(prop_oneof![proptest::sample::select(HOSTILE).prop_map(String::from), "[a-z ]{0,8}"], 0..24).prop_map(|v| v.concat())
+    }
+
+    proptest::proptest! {
+        #![proptest_config(proptest::prelude::ProptestConfig::with_cases(512))]
+        #[test]
+        fn chat_markdown_is_always_safe(md in hostile_html(), link in "[a-zA-Z: /.()]{0,30}") {
+            let src = format!("{md}\n\n[click]({link}) ![i]({link}) <{link}>");
+            let out = render(&src);
+            if let Err(e) = tags_are_safe(&out) {
+                proptest::prop_assert!(false, "{e}\ninput: {src}\noutput: {out}");
+            }
+        }
+    }
+
     #[test]
     fn renders_and_neutralises() {
         let h = render("**Done.** Here is [your logo](/assets/1) and <script>alert(1)</script> ![x](https://evil/t.png) [bad](javascript:alert(1))");

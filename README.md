@@ -76,6 +76,31 @@ scripts/build-linux.sh
 scripts/smoke-linux.sh
 ```
 
+## Security operations
+
+Seal the encryption and signing keys into systemd credentials (TPM2-bound when the machine has
+one) after creating the owner's recovery key:
+
+```bash
+sudo juggernaught keys seal
+```
+
+```bash
+sudo juggernaught keys status
+```
+
+Export the signed audit log and check it anywhere, against the key fingerprint `doctor` prints:
+
+```bash
+sudo juggernaught audit export > audit.json
+```
+
+```bash
+juggernaught audit verify audit.json --fingerprint 0123:4567:…
+```
+
+Every release ships a CycloneDX SBOM (`sbom.cdx.json`, also published next to the tarball).
+
 ## Creative tools
 
 Pinned in [tools.lock.toml](tools.lock.toml) with a SHA-256 per CPU; anything that doesn't match is refused.
