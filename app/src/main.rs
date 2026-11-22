@@ -408,6 +408,7 @@ async fn main() {
             tokio::spawn(juggernaught::assets::worker(state.clone()));
             let app = Router::new()
                 .route("/brand.css", get(brand_css))
+                .route("/brand-mark.svg", get(brand_mark))
                 .route("/auth/magic/{token}", get(magic_redeem))
                 .route("/auth/passkey/register/start", post(passkey_register_start))
                 .route("/auth/passkey/register/finish", post(passkey_register_finish))

@@ -9,7 +9,7 @@ license.workspace = true
 jugg-brand.workspace = true
 svg2pdf = "0.13"
 pdf-writer = "0.12"
-resvg = { version = "0.45", default-features = false, features = ["text"] }
+resvg = { version = "0.45", default-features = false, features = ["text", "raster-images"] }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

@@ -108,6 +108,7 @@ impl AppState {
         let brand = brand.and_then(|j| serde_json::from_str(&j).ok()).unwrap_or_default();
         let lock_path = cfg.tools_dir.join("tools.lock.toml");
         let lock = std::fs::read_to_string(&lock_path).ok().and_then(|s| jugg_tools::lock::ToolsLock::parse(&s).ok()).unwrap_or_else(jugg_tools::lock::ToolsLock::embedded);
+        jugg_print::load_fonts(&cfg.data_dir.join("fonts"));
         let cfg_arc = Arc::new(cfg.clone());
         let brand_lock = Arc::new(RwLock::new(brand));
         let (ring, signer) = (Arc::new(ring), Arc::new(signer));
@@ -118,6 +119,11 @@ impl AppState {
         registry.register(crate::site::SiteOverride(site.clone()));
         registry.register(crate::site::SitePublish(site.clone()));
         registry.register(crate::site::SiteRollback(site.clone()));
+        registry.register(crate::studio::LogoConcepts(site.clone()));
+        registry.register(crate::studio::AdoptLogo(site.clone()));
+        registry.register(crate::studio::SocialPost(site.clone()));
+        registry.register(crate::studio::BrandBook(site.clone()));
+        registry.register(crate::studio::GenerateImage(site.clone()));
         let registry = registry.with_job_sink(Arc::new(crate::assets::DbJobSink { pool: pool.clone() })).with_approvals(Arc::new(crate::site::DbApprovals { pool: pool.clone() }));
         let provider = load_provider(&pool, &ring).await;
         let owners: i64 = sqlx::query_scalar("SELECT count(*) FROM users WHERE role='owner'").fetch_one(&pool).await.map_err(err)?;
@@ -398,7 +404,7 @@ pub async fn auth_gate(State(st): State<AppState>, req: Request, next: Next) -> 
     if path == "/setup" && owner {
         return Redirect::to("/").into_response();
     }
-    let public = matches!(path, "/login" | "/setup" | "/favicon.svg" | "/brand.css")
+    let public = matches!(path, "/login" | "/setup" | "/favicon.svg" | "/brand.css" | "/brand-mark.svg")
         || ["/auth/", "/pkg/", "/fonts/", "/api/", "/files/"].iter().any(|p| path.starts_with(p));
     if public || session_user(&st, req.headers()).await.is_some() {
         return next.run(req).await;
@@ -422,6 +428,15 @@ fn device_label(ua: &str) -> String {
     let os = ["iPhone", "iPad", "Android", "Mac OS X", "Windows", "Linux"].into_iter().find(|o| ua.contains(o)).unwrap_or("Unknown device");
     let browser = ["Edg/", "Firefox/", "Chrome/", "Safari/"].into_iter().find(|b| ua.contains(b)).map(|b| b.trim_end_matches('/')).unwrap_or("browser");
     format!("{browser} on {}", os.replace("Mac OS X", "Mac"))
+}
+
+/// `/brand-mark.svg`: the adopted logo icon (sidebar, sign-in screens).
+pub async fn brand_mark(State(st): State<AppState>) -> Response {
+    let mark = st.brand.read().await.logo.mark_asset.clone();
+    match crate::studio::logo_file(&st.site, &mark).await {
+        Some(svg) => ([(header::CONTENT_TYPE, "image/svg+xml"), (header::CACHE_CONTROL, "no-cache")], svg).into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
 }
 
 /// `/brand.css`: the owner's brand tokens mapped onto the admin theme.

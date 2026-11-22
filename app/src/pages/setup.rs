@@ -1,6 +1,7 @@
 //! First-run wizard: builds the brand, then the owner's passwordless sign-in.
 
-use crate::api::{complete_setup, WizardInput};
+use crate::api::{adopt_logo_concept, complete_setup, logo_concept_previews, BrandKitView, WizardInput};
+use crate::pages::assets::AssetTile;
 use crate::pages::account::{AddPasskey, RecoveryCodes, TotpEnroll};
 use leptos::prelude::*;
 use leptos_router::hooks::use_query_map;
@@ -228,6 +229,7 @@ fn SecureStep(save: Action<WizardInput, Result<crate::api::SetupResult, ServerFn
                         <section class="secure-block"><h2>"Authenticator app"</h2><TotpEnroll on_done=|_| ()/></section>
                     })}
                     <section class="secure-block"><h2>"Recovery codes"</h2><RecoveryCodes codes=codes/></section>
+                    <LogoPicker/>
                     {form.with_untracked(|f| f.methods.iter().any(|m| m == "magic_link")).then(|| view! {
                         <p class="hint">{format!("Email links will go to {}.", form.with_untracked(|f| f.owner_email.clone()))}</p>
                     })}
@@ -252,5 +254,59 @@ fn Method(form: RwSignal<WizardInput>, key: &'static str, title: &'static str, b
             <strong>{title}</strong>
             <span>{body}</span>
         </button>
+    }
+}
+
+/// Pick a logo concept → brand kit (logo files, guidelines PDF, launch post).
+#[component]
+pub fn LogoPicker() -> impl IntoView {
+    let concepts = Resource::new(|| (), |_| logo_concept_previews());
+    let chosen = RwSignal::new(None::<String>);
+    let kit = RwSignal::new(None::<BrandKitView>);
+    let error = RwSignal::new(None::<String>);
+    let adopt = move |key: String| {
+        chosen.set(Some(key.clone()));
+        error.set(None);
+        leptos::task::spawn_local(async move {
+            match adopt_logo_concept(key).await {
+                Ok(k) => kit.set(Some(k)),
+                Err(e) => {
+                    chosen.set(None);
+                    error.set(Some(e.to_string().replace("error running server function: ", "")));
+                }
+            }
+        });
+    };
+    view! {
+        <section class="secure-block logo-picker">
+            <h2>"Pick your logo"</h2>
+            <Show when=move || kit.get().is_none() fallback=move || view! {
+                <p class="ok-line">{move || kit.get().map(|k| k.summary).unwrap_or_default()}</p>
+                <div class="chat-assets">{move || kit.get().map(|k| k.assets.into_iter().map(|c| view! { <AssetTile card=c/> }).collect_view())}</div>
+            }>
+                <p class="hint">"Four starting points in your colours and type. Pick one; you can refine it in chat any time."</p>
+                <Suspense fallback=|| view! { <div class="skeleton"></div> }>
+                    {move || Suspend::new(async move {
+                        concepts.await.map(|list| view! {
+                            <div class="concepts">
+                                {list.into_iter().map(|c| {
+                                    let key = c.key.clone();
+                                    let k2 = c.key.clone();
+                                    view! {
+                                        <button type="button" class="concept" class:busy=move || chosen.with(|x| x.as_deref() == Some(k2.as_str()))
+                                            disabled=move || chosen.get().is_some() on:click=move |_| adopt(key.clone())>
+                                            <img src=c.image alt=format!("{} logo concept", c.label)/>
+                                            <span>{c.label}</span>
+                                        </button>
+                                    }
+                                }).collect_view()}
+                            </div>
+                        })
+                    })}
+                </Suspense>
+                {move || chosen.get().map(|_| view! { <p class="hint" role="status">"Making your logo files and brand guidelines…"</p> })}
+            </Show>
+            {move || error.get().map(|e| view! { <p class="error" role="alert">{e}</p> })}
+        </section>
     }
 }

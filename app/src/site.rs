@@ -88,14 +88,18 @@ impl SiteEnv {
     }
 
     /// Fonts for the brand: bundled Plus Jakarta Sans, others from the Google Fonts repo (cached).
-    async fn fonts(&self, brand: &BrandStandards) -> (Vec<FontFace>, Vec<(String, Vec<u8>)>) {
+    pub(crate) async fn fonts(&self, brand: &BrandStandards) -> (Vec<FontFace>, Vec<(String, Vec<u8>)>) {
         let mut faces = Vec::new();
         let mut files = Vec::new();
         for family in brand.font_families() {
             let found = if family == "Plus Jakarta Sans" {
                 bundled_jakarta().map(|b| ("PlusJakartaSans-Variable.ttf".to_string(), b, "200 800".to_string()))
             } else {
-                google_font(&self.cfg.data_dir.join("fonts"), family).await
+                let f = google_font(&self.cfg.data_dir.join("fonts"), family).await;
+                if f.is_some() {
+                    jugg_print::load_fonts(&self.cfg.data_dir.join("fonts"));
+                }
+                f
             };
             if let Some((name, bytes, weight)) = found {
                 faces.push(FontFace { family: family.to_string(), url: format!("/fonts/{name}"), weight, format: "truetype".into() });
@@ -161,6 +165,25 @@ impl SiteEnv {
         let overrides = self.overrides().await;
         let base = self.cfg.domain.as_ref().filter(|_| !self.cfg.dev).map(|d| format!("https://{d}"));
         let mut built = jugg_web::build_site(&pages, &brand, &faces, &overrides, base.as_deref()).map_err(|e| e.to_string())?;
+        // Adopted logo: header image + favicon from the icon.
+        if let Some(svg) = crate::studio::logo_file(self, &brand.logo.primary_asset).await {
+            let attr = |n: &str| svg[..svg.find('>').unwrap_or(0)].split(&format!(" {n}=\"")).nth(1).and_then(|v| v.split('"').next()).and_then(|v| v.parse::<f32>().ok());
+            let (w, h) = (attr("width").unwrap_or(300.0), attr("height").unwrap_or(80.0));
+            let name = format!("media/logo-{}.svg", &jugg_crypto::sha256_hex(svg.as_bytes())[..10]);
+            let img = format!("<a class=\"brand\" href=\"/\"><img src=\"/{name}\" alt=\"{alt}\" width=\"{iw}\" height=\"36\"></a>", alt = brand.name.replace('"', "&quot;").replace('<', "&lt;"), iw = (w / h * 36.0).round());
+            let plain = format!("<a class=\"brand\" href=\"/\">{}</a>", brand.name.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&#39;"));
+            for (path, bytes) in built.files.iter_mut() {
+                if path.ends_with(".html") {
+                    *bytes = String::from_utf8_lossy(bytes).replacen(&plain, &img, 1).into_bytes();
+                }
+            }
+            extra.push((name, svg.into_bytes()));
+        }
+        if let Some(icon) = crate::studio::logo_file(self, &brand.logo.mark_asset).await {
+            if let Some(f) = built.files.iter_mut().find(|(p, _)| p == "favicon.svg") {
+                f.1 = icon.into_bytes();
+            }
+        }
         for (slug, report) in built.reports.iter_mut() {
             let mut ov = overrides.get(slug.as_str()).cloned().unwrap_or_default();
             ov.extend(overrides.get("*").cloned().unwrap_or_default());
@@ -631,7 +654,21 @@ pub fn starter_homepage(brand: &BrandStandards, what_you_do: &str, audience: &st
     }
     Page {
         slug: "/".into(),
-        title: format!("{} — {}", brand.name, brand.tagline.clone().unwrap_or_else(|| "welcome".into())).chars().take(60).collect(),
+        title: {
+            // ≤ 60 chars, cut at a word boundary (never mid-word).
+            let full = format!("{} — {}", brand.name, brand.tagline.clone().unwrap_or_else(|| "welcome".into()));
+            let mut t = String::new();
+            for w in full.split_whitespace() {
+                if t.chars().count() + w.chars().count() + 1 > 60 {
+                    break;
+                }
+                if !t.is_empty() {
+                    t.push(' ');
+                }
+                t.push_str(w);
+            }
+            t.trim_end_matches(['—', ',', ' ']).trim().to_string()
+        },
         description: description.chars().take(160).collect(),
         lang: None,
         nav: None,

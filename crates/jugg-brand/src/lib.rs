@@ -105,9 +105,15 @@ impl Default for Motion {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct LogoRules {
+    /// Asset ids of the adopted logo files (outlined SVG).
     pub primary_asset: Option<String>,
     pub mono_asset: Option<String>,
     pub mark_asset: Option<String>,
+    #[serde(default)]
+    pub reversed_asset: Option<String>,
+    /// Which generated concept was adopted (monogram, wordmark, badge, initials).
+    #[serde(default)]
+    pub concept: Option<String>,
     /// Clear space as a fraction of logo height.
     pub clearspace: f32,
     pub min_px: u16,

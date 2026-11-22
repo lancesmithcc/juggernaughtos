@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Overview {
     pub business: String,
+    pub has_logo: bool,
     pub setup_complete: bool,
     pub signed_in: bool,
     pub provider: String,
@@ -213,12 +214,14 @@ pub async fn get_overview() -> Result<Overview, ServerFnError> {
     let signed_in = ctx::user(&st).await.is_ok();
     let brand = st.brand.read().await.name.clone();
     if !signed_in {
-        return Ok(Overview { business: brand, setup_complete, signed_in, provider: String::new(), provider_ready: false, suggestions: vec![] });
+        return Ok(Overview { business: brand, has_logo: false, setup_complete, signed_in, provider: String::new(), provider_ready: false, suggestions: vec![] });
     }
     let provider = st.provider().await;
     let provider_ready = provider.health().await.is_ok();
+    let has_logo = st.brand.read().await.logo.mark_asset.is_some();
     Ok(Overview {
         business: brand,
+        has_logo,
         setup_complete,
         signed_in,
         provider: provider.label(),
@@ -478,4 +481,58 @@ pub async fn rollback_site() -> Result<String, ServerFnError> {
     let st = ctx::state()?;
     let user = ctx::user(&st).await?;
     st.site.rollback(&user).await.map_err(ServerFnError::new)
+}
+
+// ---------------------------------------------------------------- brand studio
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct LogoConceptView {
+    pub key: String,
+    pub label: String,
+    /// SVG as a data URI (inert in <img>).
+    pub image: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct BrandKitView {
+    pub summary: String,
+    pub assets: Vec<AssetCard>,
+}
+
+#[server]
+pub async fn logo_concept_previews() -> Result<Vec<LogoConceptView>, ServerFnError> {
+    let st = ctx::state()?;
+    ctx::user(&st).await?;
+    let b = st.brand.read().await.clone();
+    let _ = st.site.fonts(&b).await; // brand fonts on disk before drawing
+    let list = tokio::task::spawn_blocking(move || crate::studio::concepts_preview(&b)).await.map_err(|e| ServerFnError::new(e.to_string()))?.map_err(ServerFnError::new)?;
+    Ok(list.into_iter().map(|(key, label, image)| LogoConceptView { key, label, image }).collect())
+}
+
+#[server]
+pub async fn adopt_logo_concept(concept: String) -> Result<BrandKitView, ServerFnError> {
+    let st = ctx::state()?;
+    ctx::user(&st).await?;
+    let c = crate::studio::parse_concept(&concept).ok_or_else(|| ServerFnError::new("Unknown logo concept."))?;
+    let (summary, ids) = crate::studio::adopt(&st.site, c).await.map_err(ServerFnError::new)?;
+    Ok(BrandKitView { summary, assets: crate::studio::cards(&st, &ids).await })
+}
+
+#[server]
+pub async fn image_settings() -> Result<(bool, String), ServerFnError> {
+    let st = ctx::state()?;
+    ctx::user(&st).await?;
+    Ok(match crate::studio::image_key(&st.site).await {
+        Some((_, model)) => (true, model),
+        None => (false, "gpt-image-1".into()),
+    })
+}
+
+#[server]
+pub async fn save_image_settings(key: Option<String>, model: Option<String>) -> Result<(), ServerFnError> {
+    let st = ctx::state()?;
+    let user = ctx::user(&st).await?;
+    crate::studio::save_image_key(&st.site, key, model).await.map_err(ServerFnError::new)?;
+    let _ = jugg_db::audit::append(&st.pool, Some(&st.signer), &user, "provider.images_changed", &serde_json::json!({})).await;
+    Ok(())
 }

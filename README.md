@@ -89,8 +89,10 @@ sudo juggernaught tools status
 sudo juggernaught tools install --all
 ```
 
-Built in (always available): business cards (print-ready PDF), email signatures, logo vectorizing,
-brand guide, CSS brand check. PhotoCraft, VectorCraft, PdfCraft and impeccable install from their
+Built in (always available, no API keys): logo concepts and the full logo set, brand guidelines
+PDF, social posts at every platform size, business cards (print-ready PDF), email signatures,
+logo vectorizing, brand guide, CSS brand check. Photo-style images, textures and icons use your own
+OpenAI key (Settings → Intelligence → Image generation). PhotoCraft, VectorCraft, PdfCraft and impeccable install from their
 upstream releases; HyperFrames video needs Node 20+; Kokoro voice and open-design are not yet
 available as server binaries upstream.
 

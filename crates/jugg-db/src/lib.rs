@@ -86,5 +86,9 @@ mod tests {
             .await
             .unwrap();
         assert!(n >= 20, "expected full schema, got {n} tables");
+        // Brand history: several versions of the same brand must coexist.
+        for v in 1..=3 {
+            sqlx::query("INSERT INTO brands (id, version, standards_json, is_active, created_at) VALUES ('brand', ?, '{}', 0, 0)").bind(v).execute(&pool).await.unwrap();
+        }
     }
 }

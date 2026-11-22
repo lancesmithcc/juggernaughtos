@@ -1,6 +1,6 @@
 //! Sidebar panels. Everything here is also doable from chat; panels are for looking.
 
-use crate::api::{get_site, publish_site, rollback_site, get_brand, get_providers, get_security, get_sign_in_methods, get_standards, get_tools, save_provider_settings};
+use crate::api::{image_settings, save_image_settings, get_site, publish_site, rollback_site, get_brand, get_providers, get_security, get_sign_in_methods, get_standards, get_tools, save_provider_settings};
 use crate::pages::account::{AddPasskey, RegenerateRecovery, TotpEnroll};
 use leptos::prelude::*;
 
@@ -19,6 +19,7 @@ pub fn BrandPanel() -> impl IntoView {
     let brand = Resource::new(|| (), |_| get_brand());
     view! {
         <Panel title="Brand" lede="Your standards. Every asset and page is checked against these before it's final.">
+            <crate::pages::setup::LogoPicker/>
             <Suspense fallback=|| view! { <div class="skeleton"></div> }>
                 {move || Suspend::new(async move {
                     brand.await.map(|b| view! {
@@ -182,6 +183,8 @@ pub fn SettingsPanel() -> impl IntoView {
         <Panel title="Settings" lede="Connect intelligence, manage how you sign in, and see the tools I can use.">
             <h2 class="section-h">"Intelligence"</h2>
             <Intelligence/>
+            <h2 class="section-h">"Image generation (optional)"</h2>
+            <ImageSettings/>
             <h2 class="section-h">"Signing in"</h2>
             <SignIn/>
             <h2 class="section-h">"Tools"</h2>
@@ -316,5 +319,43 @@ fn SignIn() -> impl IntoView {
                 })
             })}
         </Suspense>
+    }
+}
+
+#[component]
+fn ImageSettings() -> impl IntoView {
+    let current = Resource::new(|| (), |_| image_settings());
+    let key = RwSignal::new(String::new());
+    let model = RwSignal::new(String::new());
+    let msg = RwSignal::new(None::<String>);
+    Effect::new(move |_| {
+        if let Some(Ok((_, m))) = current.get() {
+            model.set(m);
+        }
+    });
+    let save = move |ev: leptos::ev::SubmitEvent| {
+        ev.prevent_default();
+        let (k, m) = (key.get_untracked(), model.get_untracked());
+        leptos::task::spawn_local(async move {
+            msg.set(Some(match save_image_settings(Some(k).filter(|k| !k.is_empty()), Some(m)).await { Ok(()) => "Saved. Ask for a hero image, a texture or icons in chat.".into(), Err(e) => e.to_string() }));
+            key.set(String::new());
+            current.refetch();
+        });
+    };
+    view! {
+        <form class="intelligence" on:submit=save>
+            <p class="hint">"Logos, cards, posts and the brand book need no key. For photo-style images, textures and icons, add your own OpenAI API key; it's stored encrypted and only used for image requests you make."</p>
+            <div class="provider-fields">
+                <label>"OpenAI API key"
+                    <input type="password" autocomplete="off" placeholder=move || if current.get().and_then(|r| r.ok()).is_some_and(|c| c.0) { "Saved · enter a new key to replace" } else { "sk-…" }
+                        prop:value=move || key.get() on:input=move |ev| key.set(event_target_value(&ev))/>
+                </label>
+                <label>"Model"
+                    <input prop:value=move || model.get() on:input=move |ev| model.set(event_target_value(&ev))/>
+                </label>
+                <button class="btn primary" type="submit">"Save"</button>
+            </div>
+            {move || msg.get().map(|m| view! { <p class="hint" role="status">{m}</p> })}
+        </form>
     }
 }

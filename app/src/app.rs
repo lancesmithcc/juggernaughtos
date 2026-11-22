@@ -70,8 +70,17 @@ fn Workspace() -> impl IntoView {
             <aside class="sidebar" aria-label="Main">
                 <div class="sidebar-top">
                     <A href="/" attr:class="mark-link">
-                        <span class="mark" aria-hidden="true">"J"</span>
-                        <span class="wordmark">"Juggernaught"</span>
+                        <Suspense fallback=|| view! { <span class="mark" aria-hidden="true">"J"</span><span class="wordmark">"Juggernaught"</span> }>
+                            {move || Suspend::new(async move {
+                                match overview.await {
+                                    Ok(o) if o.has_logo => view! {
+                                        <img class="mark-img" src="/brand-mark.svg" alt="" width="30" height="30"/>
+                                        <span class="wordmark">{o.business}</span>
+                                    }.into_any(),
+                                    _ => view! { <span class="mark" aria-hidden="true">"J"</span><span class="wordmark">"Juggernaught"</span> }.into_any(),
+                                }
+                            })}
+                        </Suspense>
                     </A>
                     <button class="icon-btn only-mobile" aria-label="Close menu" on:click=move |_| set_open.set(false)>"×"</button>
                 </div>

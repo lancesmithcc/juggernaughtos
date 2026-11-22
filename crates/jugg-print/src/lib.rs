@@ -6,15 +6,20 @@
 //!   shops cut in the right place;
 //! * SVG → PNG preview with resvg for the asset library.
 
+mod book;
 mod card;
+pub mod logo;
 mod signature;
+mod social;
 
 pub use card::{business_card, CardInput, CARD_BLEED_PT, CARD_TRIM_PT};
+pub use book::brand_book;
 pub use signature::{email_signature, SignatureInput};
+pub use social::{social_post, SocialInput, SocialSize, SOCIAL_SIZES};
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, OnceLock, RwLock};
 use svg2pdf::usvg;
 
 #[derive(Debug, thiserror::Error)]
@@ -31,9 +36,29 @@ pub type Result<T> = std::result::Result<T, PrintError>;
 
 /// Font sources: bundled Plus Jakarta Sans, the local Google Fonts mirror
 /// (`JUGG_FONT_DIRS`, colon-separated), then system fonts.
+fn db_cell() -> &'static RwLock<Arc<usvg::fontdb::Database>> {
+    static DB: OnceLock<RwLock<Arc<usvg::fontdb::Database>>> = OnceLock::new();
+    DB.get_or_init(|| RwLock::new(initial_db()))
+}
+
 fn fontdb() -> Arc<usvg::fontdb::Database> {
-    static DB: OnceLock<Arc<usvg::fontdb::Database>> = OnceLock::new();
-    DB.get_or_init(|| {
+    db_cell().read().map(|d| d.clone()).unwrap_or_else(|_| initial_db())
+}
+
+/// Make freshly downloaded brand fonts available to all later renders.
+pub fn load_fonts(dir: &std::path::Path) {
+    if !dir.exists() {
+        return;
+    }
+    if let Ok(mut db) = db_cell().write() {
+        let mut next = (**db).clone();
+        next.load_fonts_dir(dir);
+        *db = Arc::new(next);
+    }
+}
+
+fn initial_db() -> Arc<usvg::fontdb::Database> {
+    {
         let mut db = usvg::fontdb::Database::new();
         for dir in std::env::var("JUGG_FONT_DIRS").unwrap_or_default().split(':').filter(|d| !d.is_empty()) {
             db.load_fonts_dir(dir);
@@ -47,8 +72,7 @@ fn fontdb() -> Arc<usvg::fontdb::Database> {
         db.load_system_fonts();
         db.set_sans_serif_family("Plus Jakarta Sans");
         Arc::new(db)
-    })
-    .clone()
+    }
 }
 
 fn options() -> usvg::Options<'static> {
@@ -58,7 +82,7 @@ fn options() -> usvg::Options<'static> {
     o
 }
 
-fn tree(svg: &str) -> Result<usvg::Tree> {
+pub(crate) fn tree(svg: &str) -> Result<usvg::Tree> {
     usvg::Tree::from_str(svg, &options()).map_err(|e| PrintError::Svg(e.to_string()))
 }
 
