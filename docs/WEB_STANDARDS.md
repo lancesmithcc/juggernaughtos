@@ -62,8 +62,12 @@ Source of truth: `crates/jugg-web/src/validate.rs` (`RULES`).
 ## Publish pipeline
 
 ```
-blocks ─▶ validate (rules + overrides) ─▶ render HTML + site.css
-      ─▶ image pipeline (resize, AVIF/WebP, budgets) ─▶ font subset
-      ─▶ token lint on CSS ─▶ link check ─▶ impeccable audit
-      ─▶ owner approval (Risk::Publish) ─▶ atomic deploy ─▶ watchdog
+blocks ─▶ validate (rules + overrides) + internal link check
+      ─▶ approved images only: resize ≤1600 px, JPEG q82 / PNG
+      ─▶ self-hosted brand fonts ─▶ render HTML + content-hashed site.css
+      ─▶ sitemap, robots, 404, thank-you page, favicon
+      ─▶ owner approval (Risk::Publish) ─▶ immutable release ─▶ atomic switch
 ```
+
+Not yet: AVIF/WebP encoding, font subsetting, and running the impeccable design audit
+as part of publishing (the agent can call it as a tool when it's installed).
