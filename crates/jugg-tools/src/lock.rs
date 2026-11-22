@@ -39,6 +39,9 @@ pub struct LockedTool {
     /// Shown when a tool can't be installed on this platform.
     #[serde(default)]
     pub note: Option<String>,
+    /// Arguments for the post-install smoke test (default `--help`).
+    #[serde(default)]
+    pub canary: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -54,6 +57,14 @@ pub struct Dist {
     /// npm package name (install = "npm").
     #[serde(default)]
     pub package: Option<String>,
+    /// install = "bundled-node": source shipped in the release under `tools/<name>`,
+    /// run with this pinned Node.js from nodejs.org (SHA-256 per CPU).
+    #[serde(default)]
+    pub node_version: Option<String>,
+    #[serde(default)]
+    pub node_sha256_aarch64: Option<String>,
+    #[serde(default)]
+    pub node_sha256_x86_64: Option<String>,
 }
 
 fn default_timeout() -> u64 {

@@ -285,44 +285,23 @@ pub async fn save_image_key(env: &SiteEnv, key: Option<String>, model: Option<St
 #[async_trait]
 impl Tool for GenerateImage {
     fn spec(&self) -> ToolSpec {
-        spec("generate_image", "Generate an image (hero photo-style image, texture, icon, illustration, logo exploration) with the owner's image model, constrained to the brand's palette and imagery rules. Results land in Assets for review. Needs an image key in Settings.",
+        spec("generate_image", "Generate ONE image (hero photo-style image, texture, icon, illustration, logo exploration) through the owner's ChatGPT account (GPT Image), constrained to the brand's palette and imagery rules. Results land in Assets for review. Images are paced to protect the owner's account: one at a time, about 90 seconds apart, at most 10 an hour and 40 a day, so each call can take a few minutes. Make one image, show it, and only make more when the owner asks; never request more than 3 in one reply.",
             json!({"type":"object","required":["prompt"],"properties":{
                 "prompt":{"type":"string","description":"what to show; the brand rules are added automatically"},
                 "kind":{"type":"string","enum":["image","texture","icon_set","logo"]},
                 "shape":{"type":"string","enum":["square","landscape","portrait"]}}}), Risk::Create)
     }
     async fn run(&self, args: Value, ctx: &ToolContext) -> Result<ToolOutput, ToolError> {
-        let Some((key, model)) = image_key(&self.0).await else {
-            return Err(ToolError::Failed("No image generation key is set. The owner can add an OpenAI key in Settings → Intelligence → Image generation. Until then, offer logo_concepts or social_post, which need no key.".into()));
-        };
         let prompt = args["prompt"].as_str().unwrap_or_default().trim().to_string();
         if prompt.is_empty() || prompt.len() > 2000 {
             return Err(ToolError::Args("prompt is required".into()));
         }
-        let size = match args["shape"].as_str() {
-            Some("landscape") => "1536x1024",
-            Some("portrait") => "1024x1536",
-            _ => "1024x1024",
-        };
         let brand = self.0.brand.read().await.clone();
         let full = format!("{} {}", brand.image_prompt_preamble(), prompt);
-        let http = reqwest::Client::builder().timeout(std::time::Duration::from_secs(180)).build().map_err(|e| ToolError::Failed(e.to_string()))?;
-        let resp: Value = http
-            .post("https://api.openai.com/v1/images/generations")
-            .bearer_auth(key)
-            .json(&json!({ "model": model, "prompt": full, "size": size, "n": 1 }))
-            .send()
-            .await
-            .map_err(|e| ToolError::Failed(e.to_string()))?
-            .json()
-            .await
-            .map_err(|e| ToolError::Failed(e.to_string()))?;
-        if let Some(err) = resp["error"]["message"].as_str() {
-            return Err(ToolError::Failed(format!("image model said: {err}")));
-        }
-        use base64::Engine;
-        let b64 = resp["data"][0]["b64_json"].as_str().ok_or_else(|| ToolError::Failed("no image returned".into()))?;
-        let bytes = base64::engine::general_purpose::STANDARD.decode(b64).map_err(|e| ToolError::Failed(e.to_string()))?;
+        let generated = crate::images::generate(&self.0, &full, args["shape"].as_str().unwrap_or("square")).await.map_err(|e| {
+            ToolError::Failed(format!("No image this time: {e}. Tell the owner plainly, don't retry in a loop; logo_concepts and social_post need no image model."))
+        })?;
+        let bytes = generated.bytes;
         let kind = match args["kind"].as_str() {
             Some("texture") => AssetKind::Texture,
             Some("icon_set") => AssetKind::IconSet,
@@ -333,6 +312,6 @@ impl Tool for GenerateImage {
         std::fs::write(job_path(ctx, &name)?, &bytes).map_err(|e| ToolError::Failed(e.to_string()))?;
         let title: String = prompt.chars().take(60).collect();
         jugg_tools::write_meta(&job_path(ctx, &name)?, kind, &title, None)?;
-        Ok(ToolOutput { summary: format!("Generated {name}. It will be checked against the brand and shown for review."), files: vec![name.into()], data: Value::Null })
+        Ok(ToolOutput { summary: format!("Generated {name} ({}). It will be checked against the brand and shown for review.", generated.note), files: vec![name.into()], data: Value::Null })
     }
 }

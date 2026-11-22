@@ -447,6 +447,31 @@ fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: 10px; }
 .provider-status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); }
 .provider-status[data-ready="true"] .dot { background: var(--ok); }
 .signout { margin-top: 40px; }
+.sub-h { margin: 8px 0 0; font-size: 15px; font-weight: 700; }
+.row-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+/* ------------------------------------------------------------ Connect ChatGPT pop-up */
+.modal-backdrop { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 16px; background: color-mix(in srgb, var(--ink) 42%, transparent); backdrop-filter: blur(6px); animation: fade-in var(--base) var(--ease); }
+.modal { width: min(980px, 100%); max-height: calc(100dvh - 32px); overflow: auto; display: grid; gap: 12px; padding: 20px; border-radius: 22px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-2); animation: rise var(--base) var(--ease); }
+.modal-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.modal-head > div { flex: 1; min-width: 0; }
+.modal-head h2 { margin: 0 0 8px; font-size: 20px; line-height: 1.2; }
+.cg-steps { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; counter-reset: step; }
+.cg-steps li { counter-increment: step; white-space: nowrap; line-height: 1.3; display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 6px; border-radius: 999px; font-size: 12.5px; color: var(--ink-faint); background: var(--surface-sunk); transition: background var(--base) var(--ease), color var(--base) var(--ease); }
+.cg-steps li::before { content: counter(step); display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; font-size: 11px; font-weight: 700; background: var(--surface); }
+.cg-steps li.on { color: var(--ink); background: var(--primary-soft); }
+.cg-steps li.on::before { background: var(--primary); color: var(--surface); }
+.modal-say { margin: 0; font-size: 15.5px; font-weight: 600; }
+.modal-say[data-step="human_check"] { color: var(--warn); }
+.modal-say[data-step="done"] { color: var(--ok); }
+.remote-browser { border-radius: 14px; outline: none; }
+.remote-browser:focus-visible { box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 24%, transparent); }
+.remote-browser img { display: block; width: 100%; height: auto; border-radius: 14px; border: 1px solid var(--line); cursor: pointer; background: var(--surface-sunk); }
+.remote-wait { aspect-ratio: 1280 / 900; display: flex; gap: 10px; align-items: center; justify-content: center; border-radius: 14px; border: 1px dashed var(--line); color: var(--ink-faint); }
+.spinner { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--primary); animation: spin 0.9s linear infinite; }
+.hint.err { color: var(--err); }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .modal-backdrop, .modal, .spinner { animation: none; } }
 /* ------------------------------------------------------------ phase 3: assets */
 .asset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; margin-top: 18px; }
 .chat-assets { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-top: 12px; }

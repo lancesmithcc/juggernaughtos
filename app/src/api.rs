@@ -536,3 +536,80 @@ pub async fn save_image_settings(key: Option<String>, model: Option<String>) -> 
     let _ = jugg_db::audit::append(&st.pool, Some(&st.signer), &user, "provider.images_changed", &serde_json::json!({})).await;
     Ok(())
 }
+
+// ------------------------------------------------------------------ image generation (ChatGPT default)
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ImageStatusView {
+    /// The ChatGPT image tool (Playwright + Chromium) is installed on this box.
+    pub installed: bool,
+    /// signed_in | signed_out | bot_check | unknown
+    pub session: String,
+    pub used_hour: usize,
+    pub used_day: usize,
+    pub per_hour: usize,
+    pub per_day: usize,
+    pub min_gap_secs: i64,
+    pub paused_until: Option<i64>,
+    pub paused_reason: Option<String>,
+    pub api_key_set: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SignInFrameView {
+    pub jpeg_b64: Option<String>,
+    pub signed_in: bool,
+    pub active: bool,
+    pub step: String,
+}
+
+#[server]
+pub async fn image_status() -> Result<ImageStatusView, ServerFnError> {
+    let st = ctx::state()?;
+    ctx::user(&st).await?;
+    let u = crate::images::usage(&st.site).await;
+    let l = crate::images::CHATGPT_LIMITS;
+    Ok(ImageStatusView {
+        installed: u.installed,
+        session: u.session.into(),
+        used_hour: u.used_hour,
+        used_day: u.used_day,
+        per_hour: l.per_hour,
+        per_day: l.per_day,
+        min_gap_secs: l.min_gap_secs,
+        paused_until: u.paused_until,
+        paused_reason: u.paused_reason,
+        api_key_set: crate::studio::image_key(&st.site).await.is_some(),
+    })
+}
+
+#[server]
+pub async fn chatgpt_check() -> Result<String, ServerFnError> {
+    let st = ctx::state()?;
+    ctx::user(&st).await?;
+    crate::images::check_session(&st.site).await.map(str::to_string).map_err(ServerFnError::new)
+}
+
+#[server]
+pub async fn chatgpt_signin_start() -> Result<(), ServerFnError> {
+    let st = ctx::state()?;
+    let user = ctx::user(&st).await?;
+    crate::images::sign_in_start(&st.site).await.map_err(ServerFnError::new)?;
+    let _ = jugg_db::audit::append(&st.pool, Some(&st.signer), &user, "images.chatgpt_sign_in_opened", &serde_json::json!({})).await;
+    Ok(())
+}
+
+#[server]
+pub async fn chatgpt_signin_frame() -> Result<SignInFrameView, ServerFnError> {
+    let st = ctx::state()?;
+    ctx::user(&st).await?;
+    let f = crate::images::sign_in_frame().await;
+    Ok(SignInFrameView { jpeg_b64: f.jpeg_b64, signed_in: f.signed_in, active: f.active, step: f.step.into() })
+}
+
+#[server]
+pub async fn chatgpt_signin_input(kind: String, x: f64, y: f64, text: String) -> Result<(), ServerFnError> {
+    let st = ctx::state()?;
+    ctx::user(&st).await?;
+    crate::images::sign_in_input(&kind, x, y, &text).await.map_err(ServerFnError::new)
+}

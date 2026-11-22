@@ -65,6 +65,8 @@ fn Workspace() -> impl IntoView {
     let overview = Resource::new(|| (), |_| crate::api::get_overview());
     // Panels (e.g. Settings → Intelligence) refetch this to update the sidebar pill.
     provide_context(overview);
+    // The "Connect ChatGPT" pop-up: chat opens it when an image needs the owner.
+    provide_context(crate::pages::panels::ChatGptPrompt(RwSignal::new(false)));
     view! {
         <div class="workspace" class:sidebar-open=open>
             <aside class="sidebar" aria-label="Main">
@@ -114,6 +116,7 @@ fn Workspace() -> impl IntoView {
                 <button class="icon-btn menu-btn only-mobile" aria-label="Open menu" on:click=move |_| set_open.set(true)>"☰"</button>
                 <Outlet/>
             </main>
+            <crate::pages::panels::ChatGptSignInDialog/>
         </div>
     }
 }

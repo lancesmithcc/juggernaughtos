@@ -1,0 +1,12 @@
+{
+  "name": "juggernaught-chatgpt-image",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Generates images through the owner's own ChatGPT session (GPT Image) with Playwright.",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "playwright-core": "1.65.0"
+  }
+}

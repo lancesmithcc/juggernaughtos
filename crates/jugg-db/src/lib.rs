@@ -92,3 +92,14 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod migration_tests {
+    #[tokio::test]
+    async fn every_migration_is_embedded() {
+        let pool = crate::connect_memory().await.unwrap();
+        // One table from the newest migration; fails if the migrator was built stale.
+        sqlx::query("SELECT count(*) FROM image_generations").execute(&pool).await.unwrap();
+        sqlx::query("SELECT count(*) FROM image_cooldowns").execute(&pool).await.unwrap();
+    }
+}

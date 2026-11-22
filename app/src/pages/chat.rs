@@ -28,6 +28,7 @@ pub fn ChatPage() -> impl IntoView {
     let conversation = RwSignal::new(None::<String>);
     let busy = RwSignal::new(false);
     let next_id = StoredValue::new(0usize);
+    let chatgpt = use_context::<crate::pages::panels::ChatGptPrompt>();
 
     let submit = move |text: String| {
         let text = text.trim().to_string();
@@ -51,6 +52,12 @@ pub fn ChatPage() -> impl IntoView {
                         StreamEvent::ToolStarted { name } => reply.live.set(Some(format!("Using {}…", name.replace('_', " ")))),
                         StreamEvent::ToolFinished { name, summary, is_error } => {
                             reply.live.set(None);
+                            // An image needs the owner's ChatGPT: pop the connect window right away.
+                            if name.ends_with("generate_image") && summary.contains("Sign in to ChatGPT") {
+                                if let Some(p) = chatgpt {
+                                    p.0.set(true);
+                                }
+                            }
                             reply.tools.update(|t| t.push(ToolActivity { name, summary: summary.chars().take(240).collect(), is_error }));
                         }
                         StreamEvent::ApprovalRequired { tool, summary } => {

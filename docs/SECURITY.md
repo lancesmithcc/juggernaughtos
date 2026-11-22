@@ -125,6 +125,28 @@ Internal review of the whole system, done 2026-11-22. Each finding and what chan
 | 7 | Parsers of attacker-controlled input had example tests only | medium | **proptest** suites: field/file decryption (tampering, garbage), backup files, sshd journal lines, honeytoken paths, IPs headed for nftables, the brand gate (SVG/HTML/PDF/raster/CSS), chat markdown, the HTML sanitizer, page slugs, the MCP handler |
 | 8 | No machine-readable inventory of what ships | low | CycloneDX 1.5 SBOM (`scripts/sbom.py`): every crate linked into the binary with its Cargo.lock checksum and licence, plus every pinned tool with its per-arch SHA-256. Shipped in the tarball and next to it as `*.sbom.cdx.json` |
 
+### ChatGPT image worker
+
+- The owner's ChatGPT login lives only in a Chromium profile at `data_dir/chatgpt/profile` (0700,
+  user `jugg`). Juggernaught never sees or stores the password: the Connect ChatGPT pop-up streams
+  screenshots of a headless browser on the server and forwards the owner's clicks and keystrokes;
+  input is passed through and never written down. Opening the pop-up and a completed sign-in are
+  audit-logged.
+- No bot-check evasion: the browser identifies as what it is. If ChatGPT shows a human check, the
+  worker stops (`blocked`), image generation pauses 30 minutes, and the owner completes the check
+  themselves in the pop-up (which clears the pause).
+- Chromium runs with its own sandbox on; on hosts without unprivileged user namespaces it falls
+  back to no sandbox and logs a warning. Whether the sandbox starts inside the hardened
+  `juggernaught.service` (SystemCallFilter=@system-service) is not yet verified on a real host.
+  The worker opens chatgpt.com; the pop-up's own navigation command only allows chatgpt.com and
+  auth.openai.com, though the owner's clicks can follow ChatGPT's sign-in to Google, Apple or
+  Microsoft.
+- Pacing is persisted in SQLite (`image_generations`, `image_cooldowns`) and fails closed: if the
+  history can't be read, no image is made.
+- Supply chain: `playwright-core` pinned by the npm lockfile (integrity hash), Node.js pinned by
+  SHA-256 from nodejs.org, Chromium from Playwright's own CDN for that Playwright version (verified
+  by Playwright, not by us).
+
 What sealing does not protect: a root attacker on the running box can read the decrypted credentials
 from the service's ramfs or its memory. Sealing defends the disk, backups of the disk and offline
 copies. Overwriting a file on an SSD does not guarantee the old blocks are gone; full-disk encryption

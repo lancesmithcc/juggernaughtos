@@ -46,6 +46,9 @@ docker run --rm --cap-add NET_ADMIN -v "$PWD/dist":/dist:ro -v "$PWD/install.sh"
   as_jugg /usr/local/bin/juggernaught backup test > /tmp/rt.txt 2>&1; grep -q "restores cleanly" /tmp/rt.txt && ok "restore test passes" || fail "restore test passes"
   JUGG_CONFIG=$C /usr/local/bin/juggernaught tools install pdfcraft impeccable > /tmp/tools.txt 2>&1 && ok "pinned tools downloaded, hash-verified, smoke-tested" || { cat /tmp/tools.txt; fail "tool install"; }
   JUGG_CONFIG=$C /usr/local/bin/juggernaught tools verify > /tmp/verify.txt 2>&1 && ok "tool canaries pass" || { cat /tmp/verify.txt; fail "tool verify"; }
+  JUGG_CONFIG=$C /usr/local/bin/juggernaught tools install chatgpt-image > /tmp/cg.txt 2>&1 && ok "ChatGPT image tool installed (pinned Node + npm lockfile + Chromium), canary passes" || { cat /tmp/cg.txt; fail "chatgpt-image install"; }
+  CG=$(ls -d /opt/juggernaught/tools/chatgpt-image/*/ | head -1); install -d -o jugg -g jugg -m 0700 /var/lib/juggernaught/chatgpt
+  runuser -u jugg -- env HOME=/var/lib/juggernaught/chatgpt "${CG}chatgpt-image" status --profile /var/lib/juggernaught/chatgpt/profile > /tmp/cgs.txt 2>&1; grep -q "\"done\":true,\"signed_in\":false" /tmp/cgs.txt && ok "ChatGPT worker runs as jugg (not signed in yet: $(grep -o "\"challenge\":[a-z]*" /tmp/cgs.txt))" || { cat /tmp/cgs.txt; fail "chatgpt-image status"; }
   JUGG_CONFIG=$C /usr/local/bin/juggernaught tools status > /tmp/status.txt; grep -q "pdfcraft .* ready" /tmp/status.txt && ok "tools status reports pdfcraft ready" || { cat /tmp/status.txt; fail "tools status"; }
   as_jugg /usr/local/bin/juggernaught audit export > /tmp/audit.json && FP=$(grep -o "fingerprint [0-9a-f:]*" /tmp/doctor.txt | cut -d" " -f2) \
     && /usr/local/bin/juggernaught audit verify /tmp/audit.json --fingerprint "$FP" > /tmp/av.txt && grep -q "audit export ok" /tmp/av.txt && ok "audit export verifies offline against pinned key" || { cat /tmp/av.txt; fail "audit verify"; }

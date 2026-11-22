@@ -116,8 +116,10 @@ sudo juggernaught tools install --all
 
 Built in (always available, no API keys): logo concepts and the full logo set, brand guidelines
 PDF, social posts at every platform size, business cards (print-ready PDF), email signatures,
-logo vectorizing, brand guide, CSS brand check. Photo-style images, textures and icons use your own
-OpenAI key (Settings → Intelligence → Image generation). PhotoCraft, VectorCraft, PdfCraft and impeccable install from their
+logo vectorizing, brand guide, CSS brand check. Photo-style images, textures and icons are made with
+GPT Image through your own ChatGPT account (connect once: Settings → Image generation → Connect
+ChatGPT; a pop-up also appears in chat the first time an image needs it). An OpenAI API key is an
+optional fallback. PhotoCraft, VectorCraft, PdfCraft and impeccable install from their
 upstream releases; HyperFrames video needs Node 20+; Kokoro voice and open-design are not yet
 available as server binaries upstream.
 
@@ -152,10 +154,13 @@ A spare computer works the same; a UPS and an off-site backup target are strongl
    own login), Juggernaught never handles those credentials, and API-key providers
    (OpenRouter / Anthropic / OpenAI) are the default for anything resold or managed.
    Get a quick legal read before selling managed installs on subscriptions.
-2. **GPT Image via browser automation.** Driving a logged-in ChatGPT web session with
-   Playwright breaks OpenAI's terms on automated access and is brittle. Default adapter:
-   OpenAI Images API (`gpt-image` models) with the owner's key, fallback fal.ai/OpenRouter
-   image models. The Playwright path stays available only as an opt-in for owner-operated boxes.
+2. **GPT Image via browser automation (decided: default).** Images come from the owner's own
+   ChatGPT session driven by Playwright (`tools/chatgpt-image`); the OpenAI Images API key is the
+   fallback. Risks the owner accepts: OpenAI's terms restrict automated access to ChatGPT, so the
+   account can be limited; the ChatGPT page changes without notice; ChatGPT may ask headless
+   browsers for a human check, which the owner completes in the Connect ChatGPT pop-up. Juggernaught
+   does not evade bot checks, and paces requests: one at a time, ≥ 90 s apart, ≤ 10 an hour and
+   ≤ 40 a day, with a pause whenever ChatGPT reports a limit or a check.
 3. **SQLite over PostgreSQL** (as chosen). Fine for one business per box; the schema stays
    portable if a hosted multi-tenant edition ever happens.
 4. **Licences.** Creative suite is MIT/Apache-2.0 (redistributable). Google Fonts are

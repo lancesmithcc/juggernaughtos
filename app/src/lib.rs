@@ -9,6 +9,8 @@ pub mod pages;
 #[cfg(feature = "ssr")]
 pub mod assets;
 #[cfg(feature = "ssr")]
+pub mod images;
+#[cfg(feature = "ssr")]
 pub mod keys;
 #[cfg(feature = "ssr")]
 pub mod server;
