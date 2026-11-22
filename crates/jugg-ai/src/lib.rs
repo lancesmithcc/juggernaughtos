@@ -69,6 +69,10 @@ pub struct AgentRequest {
     pub user: String,
     /// Command that starts our MCP server (for CLI providers).
     pub mcp_command: (String, Vec<String>),
+    /// Environment for that command (the per-turn bridge token).
+    pub mcp_env: Vec<(String, String)>,
+    /// Linux production: run the CLI inside bubblewrap (see `cli::CliSandbox`).
+    pub sandbox: Option<cli::CliSandbox>,
     pub registry: jugg_tools::Registry,
     pub ctx: jugg_tools::ToolContext,
 }

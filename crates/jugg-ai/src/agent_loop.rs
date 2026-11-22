@@ -122,6 +122,8 @@ mod tests {
             history: vec![],
             user: "check css".into(),
             mcp_command: ("juggernaught".into(), vec!["mcp".into()]),
+            mcp_env: vec![],
+            sandbox: None,
             registry: jugg_tools::Registry::standard(&Default::default(), &dir),
             ctx: jugg_tools::ToolContext { job_dir: dir.clone(), brand: Arc::new(Default::default()), approved: false },
         };

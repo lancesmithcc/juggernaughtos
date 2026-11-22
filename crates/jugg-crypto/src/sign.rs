@@ -15,8 +15,17 @@ impl Signer {
         Ok(Self { kp: PqdsaKeyPair::generate(&ML_DSA_65_SIGNING)? })
     }
 
-    /// Load `path` (PKCS#8 DER) or create it (mode 0600) on first use.
+    /// Load `path` (PKCS#8 DER) or create it (mode 0600) on first use. Sealed
+    /// installs read it from the systemd credential `signing` instead.
     pub fn load_or_create(path: &Path) -> Result<Self> {
+        if let Some(c) = std::env::var_os("CREDENTIALS_DIRECTORY").map(std::path::PathBuf::from) {
+            if let Ok(der) = std::fs::read(c.join("signing")) {
+                return Ok(Self { kp: PqdsaKeyPair::from_pkcs8(&ML_DSA_65_SIGNING, &der)? });
+            }
+        }
+        if path.parent().is_some_and(crate::keyring::is_sealed) && !path.exists() {
+            return Err(CryptoError::KeyStore("the signing key is sealed (systemd-creds); run through the service".into()));
+        }
         if path.exists() {
             let der = std::fs::read(path).map_err(|e| CryptoError::KeyStore(e.to_string()))?;
             return Ok(Self { kp: PqdsaKeyPair::from_pkcs8(&ML_DSA_65_SIGNING, &der)? });

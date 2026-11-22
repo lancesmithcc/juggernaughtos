@@ -76,6 +76,75 @@ pub async fn serve_stdio(registry: Registry, ctx: ToolContext) -> std::io::Resul
     Ok(())
 }
 
+/// Main-process side of the agent bridge: a Unix socket the sandboxed CLI's
+/// relay connects to. The first line must be `{"token": "..."}`; `authorize`
+/// maps a live token to the conversation's tool context (or refuses).
+pub async fn serve_socket<F>(path: std::path::PathBuf, registry: Registry, authorize: F) -> std::io::Result<()>
+where
+    F: Fn(&str) -> Option<ToolContext> + Send + Sync + 'static,
+{
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let _ = std::fs::remove_file(&path);
+    let listener = tokio::net::UnixListener::bind(&path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+    }
+    let authorize = std::sync::Arc::new(authorize);
+    loop {
+        let (stream, _) = listener.accept().await?;
+        let (registry, authorize) = (registry.clone(), authorize.clone());
+        tokio::spawn(async move {
+            let (r, mut w) = stream.into_split();
+            let mut lines = BufReader::new(r).lines();
+            let Ok(Some(first)) = lines.next_line().await else { return };
+            let token = serde_json::from_str::<Value>(&first).ok().and_then(|v| v["token"].as_str().map(str::to_string)).unwrap_or_default();
+            let Some(ctx) = authorize(&token) else {
+                let _ = w.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32001,\"message\":\"unauthorized\"}}\n").await;
+                return;
+            };
+            while let Ok(Some(line)) = lines.next_line().await {
+                if line.trim().is_empty() || line.len() > 1024 * 1024 {
+                    continue;
+                }
+                let resp = match serde_json::from_str::<Value>(&line) {
+                    Ok(req) => handle(&registry, &ctx, &req).await,
+                    Err(e) => Some(json!({"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":e.to_string()}})),
+                };
+                if let Some(r) = resp {
+                    if w.write_all(format!("{r}\n").as_bytes()).await.is_err() {
+                        break;
+                    }
+                }
+            }
+        });
+    }
+}
+
+/// Sandbox side: pipe stdio <-> the main process socket. Holds no keys,
+/// reads no config; all it knows is a socket path and a per-turn token.
+pub async fn relay<R, W>(socket: &std::path::Path, token: &str, stdin: R, mut stdout: W) -> std::io::Result<()>
+where
+    R: tokio::io::AsyncRead + Unpin + Send + 'static,
+    W: tokio::io::AsyncWrite + Unpin,
+{
+    let stream = tokio::net::UnixStream::connect(socket).await?;
+    let (mut sr, mut sw) = stream.into_split();
+    sw.write_all(format!("{}\n", json!({ "token": token })).as_bytes()).await?;
+    let mut stdin = stdin;
+    let up = tokio::spawn(async move {
+        let _ = tokio::io::copy(&mut stdin, &mut sw).await;
+        let _ = sw.shutdown().await;
+    });
+    tokio::io::copy(&mut sr, &mut stdout).await?;
+    stdout.flush().await?;
+    up.abort();
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -108,6 +177,28 @@ mod tests {
             "params":{"name":"business_card","arguments":{"name":"Ada Baker","email":"ada@harbour.test"}}})).await.unwrap();
         assert_eq!(card["result"]["structuredContent"]["files"][0], "business-card-ada-baker.pdf");
         assert!(dir.path().join("business-card-ada-baker.pdf.meta.json").exists());
+    }
+
+    #[tokio::test]
+    async fn socket_bridge_requires_token_and_serves_tools() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("mcp.sock");
+        let reg = Registry::standard(&crate::lock::ToolsLock::default(), dir.path());
+        let job = dir.path().to_path_buf();
+        tokio::spawn(serve_socket(sock.clone(), reg, move |t| (t == "good").then(|| ctx(&job))));
+        for _ in 0..50 {
+            if sock.exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        let req = b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}\n".to_vec();
+        let (mut out, mut bad) = (Vec::new(), Vec::new());
+        relay(&sock, "good", std::io::Cursor::new(req.clone()), &mut out).await.unwrap();
+        let v: Value = serde_json::from_slice(out.split(|b| *b == b'\n').next().unwrap()).unwrap();
+        assert!(v["result"]["tools"].as_array().unwrap().iter().any(|t| t["name"] == "brand_guide"));
+        relay(&sock, "forged", std::io::Cursor::new(req), &mut bad).await.unwrap();
+        assert!(String::from_utf8_lossy(&bad).contains("unauthorized"), "bad token refused");
     }
 
     #[tokio::test]

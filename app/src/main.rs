@@ -31,6 +31,12 @@ async fn main() {
             #[arg(long)]
             conversation: Option<String>,
         },
+        /// Relay for sandboxed agent CLIs: stdio <-> the app's tool socket (token in JUGG_MCP_TOKEN).
+        #[command(hide = true)]
+        McpProxy {
+            #[arg(long)]
+            socket: std::path::PathBuf,
+        },
         /// Connect an intelligence provider: claude, codex or openrouter.
         Connect { provider: String },
         /// Print the one-time setup link for a fresh install.
@@ -107,6 +113,15 @@ async fn main() {
         std::env::set_var("LEPTOS_SITE_ROOT", beside_binary.unwrap_or_else(|| "target/site".into()));
     }
     let cli = Cli::parse();
+    // The relay runs inside the agent sandbox: no config, no keys, no logging setup.
+    if let Some(Cmd::McpProxy { socket }) = &cli.cmd {
+        let token = std::env::var("JUGG_MCP_TOKEN").unwrap_or_default();
+        if let Err(e) = jugg_tools::mcp::relay(socket, &token, tokio::io::stdin(), tokio::io::stdout()).await {
+            eprintln!("mcp-proxy: {e}");
+            std::process::exit(1);
+        }
+        return;
+    }
     let cfg = match &cli.config {
         Some(p) => jugg_core::Config::load(p).unwrap_or_else(|e| panic!("config: {e}")),
         None => jugg_core::Config::dev(),
@@ -274,7 +289,7 @@ async fn main() {
     let state = AppState::init(cfg, leptos_options.clone()).await.unwrap_or_else(|e| panic!("startup: {e}"));
 
     match cli.cmd.unwrap_or(Cmd::Serve) {
-        Cmd::SetupUrl | Cmd::Firewall { .. } | Cmd::Steward { .. } | Cmd::Tools { .. } => unreachable!(),
+        Cmd::SetupUrl | Cmd::Firewall { .. } | Cmd::Steward { .. } | Cmd::Tools { .. } | Cmd::McpProxy { .. } => unreachable!(),
         Cmd::Backup { cmd } => match cmd {
             BackupCmd::Create => {
                 let tmp = state.cfg.data_dir.join(".backup-db.sqlite");
@@ -362,7 +377,15 @@ async fn main() {
                         println!("Starting Claude Code. Type /login, finish signing in, then /exit.");
                     }
                     // The vendor's own login flow: Juggernaught never sees these credentials.
-                    let status = std::process::Command::new(bin).args(&args).status();
+                    // On servers the login lives in the agent's own home (what the sandbox sees).
+                    let mut c = std::process::Command::new(bin);
+                    c.args(&args);
+                    if !state.cfg.dev {
+                        let home = agent_home(&state.cfg);
+                        let _ = std::fs::create_dir_all(&home);
+                        c.env("HOME", &home);
+                    }
+                    let status = c.status();
                     if !status.map(|s| s.success()).unwrap_or(false) {
                         eprintln!("`{bin}` is not installed or login did not finish.");
                         std::process::exit(1);
@@ -406,6 +429,22 @@ async fn main() {
             let st_cfg = state.cfg.clone();
             let routes = generate_route_list(App);
             tokio::spawn(juggernaught::assets::worker(state.clone()));
+            {
+                // Agent bridge: sandboxed CLIs reach the tools only through this socket.
+                let st = state.clone();
+                let registry = state.registry.clone();
+                tokio::spawn(async move {
+                    let tokens = st.mcp_tokens.clone();
+                    let r = jugg_tools::mcp::serve_socket(st.mcp_socket(), registry, move |t| {
+                        let now = jugg_core::now_unix();
+                        tokens.lock().ok().and_then(|m| m.get(t).filter(|(_, exp)| *exp > now).map(|(ctx, _)| ctx.clone()))
+                    })
+                    .await;
+                    if let Err(e) = r {
+                        tracing::error!(error = %e, "agent bridge socket stopped");
+                    }
+                });
+            }
             let app = Router::new()
                 .route("/brand.css", get(brand_css))
                 .route("/brand-mark.svg", get(brand_mark))

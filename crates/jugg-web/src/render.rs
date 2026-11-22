@@ -171,35 +171,22 @@ fn block(b: &Block) -> String {
     }
 }
 
-/// Conservative sanitizer for owner-approved raw HTML: strips script/style/
-/// iframe/object elements, event-handler attributes and javascript: URLs.
-/// (Phase 3 swaps this for an allowlist parser — see docs/WEB_STANDARDS.md.)
+/// Allow-list sanitizer for owner-approved raw HTML (html5ever-based ammonia):
+/// only content tags survive, no scripts, styles, frames, forms or event
+/// handlers; links limited to https/mailto/tel and site-relative URLs.
 fn sanitize(html: &str) -> String {
-    let mut s = html.to_string();
-    for tag in ["script", "style", "iframe", "object", "embed", "link", "meta", "base"] {
-        loop {
-            let lower = s.to_lowercase();
-            let Some(start) = lower.find(&format!("<{tag}")) else { break };
-            let end = lower[start..].find(&format!("</{tag}>")).map(|e| start + e + tag.len() + 3).or_else(|| lower[start..].find('>').map(|e| start + e + 1)).unwrap_or(s.len());
-            s.replace_range(start..end, "");
-        }
-    }
-    let mut out = String::with_capacity(s.len());
-    let mut rest = s.as_str();
-    while let Some(i) = rest.to_lowercase().find(" on") {
-        let after = &rest[i + 3..];
-        let is_handler = after.chars().take_while(|c| c.is_ascii_alphabetic()).count() > 0 && after.trim_start_matches(|c: char| c.is_ascii_alphabetic()).trim_start().starts_with('=');
-        out.push_str(&rest[..i]);
-        if is_handler {
-            let attr_end = after.find(|c| c == '>' || c == ' ').unwrap_or(after.len());
-            rest = &after[attr_end..];
-        } else {
-            out.push_str(" on");
-            rest = after;
-        }
-    }
-    out.push_str(rest);
-    out.replace("javascript:", "").replace("JAVASCRIPT:", "")
+    use std::collections::HashSet;
+    let tags: HashSet<&str> = ["p", "br", "h2", "h3", "h4", "ul", "ol", "li", "strong", "em", "b", "i", "a", "blockquote", "figure", "figcaption", "img", "table", "thead", "tbody", "tr", "th", "td", "span", "div", "hr", "small", "code", "pre"].into_iter().collect();
+    let schemes: HashSet<&str> = ["https", "mailto", "tel"].into_iter().collect();
+    ammonia::Builder::default()
+        .tags(tags)
+        .generic_attributes(HashSet::new())
+        .tag_attributes([("a", ["href", "title"].into_iter().collect()), ("img", ["src", "alt", "width", "height"].into_iter().collect()), ("td", ["colspan", "rowspan"].into_iter().collect()), ("th", ["colspan", "rowspan", "scope"].into_iter().collect())].into_iter().collect())
+        .url_schemes(schemes)
+        .url_relative(ammonia::UrlRelative::PassThrough)
+        .link_rel(Some("noopener noreferrer"))
+        .clean(html)
+        .to_string()
 }
 
 #[cfg(test)]
@@ -225,6 +212,20 @@ mod tests {
         assert!(!html.to_lowercase().contains("<script"));
         assert!(!html.contains("onclick"));
         assert!(!html.contains("javascript:"));
+        // Classic bypasses an ad-hoc stripper misses.
+        for evil in [
+            "<img src=x onerror=alert(1)>",
+            "<svg><script>alert(1)</script></svg>",
+            "<a href=\"jav&#x09;ascript:alert(1)\">x</a>",
+            "<scr<script>ipt>alert(1)</script>",
+            "<iframe src=\"https://evil\"></iframe>",
+            "<div style=\"background:url(javascript:alert(1))\">x</div>",
+            "<form action=https://evil><input name=p></form>",
+            "<a href=\"data:text/html,<script>alert(1)</script>\">x</a>",
+        ] {
+            let out = sanitize(evil).to_lowercase();
+            assert!(!out.contains("<script") && !out.contains("onerror") && !out.contains("javascript") && !out.contains("<iframe") && !out.contains("style=") && !out.contains("<form") && !out.contains("data:"), "{evil} -> {out}");
+        }
         let css = site_css(&BrandStandards::default());
         assert!(jugg_brand::lint_css(&BrandStandards::default(), &css).is_empty(), "site.css must pass its own brand gate");
     }

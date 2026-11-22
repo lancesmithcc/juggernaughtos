@@ -43,9 +43,37 @@ pub struct Keyring {
 }
 
 impl Keyring {
-    /// Load every KEK in `dir`, creating KEK 1 on first boot.
+    /// Load every KEK, creating KEK 1 on first boot. Sealed installs get their
+    /// keys from systemd credentials (`$CREDENTIALS_DIRECTORY/kek-<n>`, decrypted
+    /// by systemd with TPM2 when present); plaintext key files are then gone.
     pub fn load_or_create(dir: impl AsRef<Path>) -> Result<Self> {
+        let creds = std::env::var_os("CREDENTIALS_DIRECTORY").map(PathBuf::from);
+        Self::load(dir, creds.as_deref())
+    }
+
+    pub fn load(dir: impl AsRef<Path>, creds: Option<&Path>) -> Result<Self> {
         let dir = dir.as_ref().to_path_buf();
+        let mut from_creds = Vec::new();
+        if let Some(c) = creds {
+            for entry in std::fs::read_dir(c).into_iter().flatten().flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if let Some(id) = name.strip_prefix("kek-").and_then(|s| s.parse::<u8>().ok()) {
+                    let bytes = std::fs::read(entry.path()).map_err(|e| CryptoError::KeyStore(e.to_string()))?;
+                    let arr: [u8; 32] = bytes.try_into().map_err(|_| CryptoError::KeyStore(format!("credential {name} is not 32 bytes")))?;
+                    from_creds.push((id, Kek(SecretBox::new(Box::new(arr)))));
+                }
+            }
+        }
+        if !from_creds.is_empty() {
+            from_creds.sort_by_key(|(id, _)| *id);
+            let active = from_creds.last().map(|(id, _)| *id).unwrap_or(1);
+            return Ok(Self { dir, active, keks: from_creds });
+        }
+        if is_sealed(&dir) {
+            return Err(CryptoError::KeyStore(
+                "the encryption keys are sealed (systemd-creds); run this through its systemd service, e.g. `systemctl start juggernaught-backup`".into(),
+            ));
+        }
         std::fs::create_dir_all(&dir).map_err(|e| CryptoError::KeyStore(e.to_string()))?;
         restrict_dir(&dir)?;
 
@@ -158,6 +186,13 @@ impl aws_lc_rs::hkdf::KeyType for HkdfLen {
     }
 }
 
+/// Marker written by `juggernaught keys seal` once plaintext keys are destroyed.
+pub const SEALED_MARKER: &str = ".sealed";
+
+pub fn is_sealed(dir: &Path) -> bool {
+    dir.join(SEALED_MARKER).exists()
+}
+
 pub(crate) fn write_secret_file(path: &Path, bytes: &[u8]) -> Result<()> {
     use std::io::Write;
     let mut opts = std::fs::OpenOptions::new();
@@ -186,6 +221,21 @@ fn restrict_dir(dir: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sealed_keys_come_from_credentials_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let creds = tempfile::tempdir().unwrap();
+        let k = *Keyring::load(dir.path(), None).unwrap().derive(1, Purpose::Field).unwrap().expose_secret();
+        // Seal: move the key into the credentials dir, destroy plaintext, mark sealed.
+        std::fs::rename(dir.path().join("kek-1.key"), creds.path().join("kek-1")).unwrap();
+        std::fs::write(dir.path().join(SEALED_MARKER), b"").unwrap();
+        let ring = Keyring::load(dir.path(), Some(creds.path())).unwrap();
+        assert_eq!(*ring.derive(1, Purpose::Field).unwrap().expose_secret(), k, "same key via credentials");
+        // Without credentials a sealed box must refuse, never mint a fresh key.
+        assert!(Keyring::load(dir.path(), None).is_err());
+        assert!(!dir.path().join("kek-1.key").exists());
+    }
 
     #[test]
     fn persists_and_rotates() {

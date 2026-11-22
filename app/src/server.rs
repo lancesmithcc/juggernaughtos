@@ -51,6 +51,8 @@ pub struct AppState {
     pub mailer: Option<Arc<Mailer>>,
     pub steward: jugg_steward::client::StewardClient,
     pub site: Arc<crate::site::SiteEnv>,
+    /// Live per-turn tokens for the agent bridge socket → that turn's tool context.
+    pub mcp_tokens: Arc<Mutex<HashMap<String, (ToolContext, i64)>>>,
 }
 
 impl FromRef<AppState> for LeptosOptions {
@@ -165,6 +167,24 @@ impl AppState {
             mailer,
             steward: jugg_steward::client::StewardClient::spawn(cfg_socket),
             site,
+            mcp_tokens: Arc::new(Mutex::new(HashMap::new())),
+        })
+    }
+
+    pub fn mcp_socket(&self) -> std::path::PathBuf {
+        self.cfg.data_dir.join("run").join("mcp.sock")
+    }
+
+    /// Bubblewrap profile for agent CLIs on Linux servers; none in development.
+    fn cli_sandbox(&self, job_dir: &std::path::Path) -> Option<jugg_ai::cli::CliSandbox> {
+        if self.cfg.dev || !cfg!(target_os = "linux") || !std::path::Path::new("/usr/bin/bwrap").exists() {
+            return None;
+        }
+        let exe_root = std::env::current_exe().ok().and_then(|p| p.parent().and_then(|d| d.parent()).map(|d| d.to_path_buf()));
+        Some(jugg_ai::cli::CliSandbox {
+            home: agent_home(&self.cfg),
+            read_only: exe_root.into_iter().chain(["/opt/juggernaught".into(), "/usr/local".into()]).collect(),
+            read_write: vec![job_dir.to_path_buf(), self.cfg.data_dir.join("run")],
         })
     }
 
@@ -196,6 +216,11 @@ impl AppState {
         let now = jugg_core::now_unix();
         self.limiter.lock().map(|mut l| l.blocked(&format!("ip:{ip}"), now) || account.is_some_and(|a| l.blocked(&format!("acct:{a}"), now))).unwrap_or(true)
     }
+}
+
+/// Agent CLIs (Claude Code, Codex) keep their login here, away from the app's data.
+pub fn agent_home(cfg: &Config) -> std::path::PathBuf {
+    cfg.data_dir.join("agent-home")
 }
 
 fn err(e: impl std::fmt::Display) -> String {
@@ -626,6 +651,13 @@ async fn run_turn(st: AppState, turn: Turn, out: tokio::sync::mpsc::Sender<Agent
     let provider = st.provider().await;
     let label = provider.label();
     let ctx = st.job_ctx(&conv, brand.clone());
+    // Per-turn bridge token: the CLI's relay presents it to reach this turn's tools.
+    let bridge_token = base64_lite::encode_url(&jugg_crypto::random_bytes::<32>());
+    if let Ok(mut m) = st.mcp_tokens.lock() {
+        let now = jugg_core::now_unix();
+        m.retain(|_, (_, exp)| *exp > now);
+        m.insert(bridge_token.clone(), (ctx.clone(), now + 3600));
+    }
     if let Err(e) = std::fs::create_dir_all(&ctx.job_dir) {
         let _ = out.send(AgentEvent::Error { message: format!("Couldn't prepare the workspace: {e}") }).await;
         let _ = out.send(AgentEvent::Done).await;
@@ -635,7 +667,9 @@ async fn run_turn(st: AppState, turn: Turn, out: tokio::sync::mpsc::Sender<Agent
         system: jugg_ai::prompt::system_prompt(&brand, &business.unwrap_or_default()),
         history,
         user: text,
-        mcp_command: (exe, vec!["mcp".into(), "--conversation".into(), conv.clone()]),
+        mcp_command: (exe, vec!["mcp-proxy".into(), "--socket".into(), st.mcp_socket().display().to_string()]),
+        mcp_env: vec![("JUGG_MCP_TOKEN".into(), bridge_token.clone())],
+        sandbox: st.cli_sandbox(&ctx.job_dir),
         registry: st.registry.clone(),
         ctx,
     };
@@ -672,7 +706,11 @@ async fn run_turn(st: AppState, turn: Turn, out: tokio::sync::mpsc::Sender<Agent
             client_gone = true;
         }
     }
-    if let Ok(Err(e)) = run.await {
+    let run_result = run.await;
+    if let Ok(mut m) = st.mcp_tokens.lock() {
+        m.remove(&bridge_token);
+    }
+    if let Ok(Err(e)) = run_result {
         let msg = format!("\n\n_{e}_");
         reply.push_str(&msg);
         let _ = out.send(AgentEvent::TextDelta { text: msg }).await;
