@@ -218,7 +218,10 @@ fn shape_hint(shape: &str) -> &'static str {
 pub async fn generate(env: &SiteEnv, prompt: &str, shape: &str) -> Result<Generated, String> {
     let _one_at_a_time = GATE.lock().await;
     let why_not_chatgpt: String;
-    if let Some(bin) = worker(env) {
+    if session_state() == "signed_out" && worker(env).is_some() {
+        // Known not connected: answer at once so the owner gets the Connect window right away.
+        why_not_chatgpt = "ChatGPT isn't connected yet; the owner now sees a Connect ChatGPT window".into();
+    } else if let Some(bin) = worker(env) {
         match slot(env, CHATGPT, &CHATGPT_LIMITS).await {
             Ok(()) => match run_chatgpt(env, &bin, &format!("{prompt}{}", shape_hint(shape))).await {
                 Ok(bytes) => return Ok(Generated { bytes, backend: CHATGPT, note: "made with your ChatGPT account".into() }),
@@ -228,7 +231,7 @@ pub async fn generate(env: &SiteEnv, prompt: &str, shape: &str) -> Result<Genera
             Err(e) => why_not_chatgpt = format!("ChatGPT image pacing: {e}"),
         }
     } else {
-        why_not_chatgpt = "the ChatGPT image tool is not installed (juggernaught tools install chatgpt-image)".into();
+        why_not_chatgpt = "the ChatGPT image maker isn't set up on this server yet; the owner now sees a Connect ChatGPT window that sets it up".into();
     }
     if let Some((key, model)) = crate::studio::image_key(env).await {
         slot(env, API, &API_LIMITS).await.map_err(|e| format!("{why_not_chatgpt}. API fallback: {e}"))?;
@@ -330,6 +333,40 @@ async fn run_api(key: &str, model: &str, prompt: &str, shape: &str) -> Result<Ve
     use base64::Engine;
     let b64 = resp["data"][0]["b64_json"].as_str().ok_or("no image returned")?;
     base64::engine::general_purpose::STANDARD.decode(b64).map_err(|e| e.to_string())
+}
+
+// ------------------------------------------------------------------ one-click install
+
+/// "" idle, "running", "ok", or "failed: …"
+static INSTALL: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new(String::new()));
+
+pub fn install_state() -> String {
+    INSTALL.lock().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+/// Install the ChatGPT image maker from the admin. Works where the app may write its
+/// tools folder (development, single-user boxes); hardened servers keep that folder
+/// root-only, so the owner gets the one command to run instead.
+pub fn start_install(env: &SiteEnv) {
+    {
+        let mut st = INSTALL.lock().unwrap_or_else(|e| e.into_inner());
+        if *st == "running" {
+            return;
+        }
+        *st = "running".into();
+    }
+    let tools_dir = env.cfg.tools_dir.clone();
+    tokio::task::spawn_blocking(move || {
+        let lock = std::fs::read_to_string(tools_dir.join("tools.lock.toml")).ok().and_then(|s| jugg_tools::lock::ToolsLock::parse(&s).ok()).unwrap_or_else(jugg_tools::lock::ToolsLock::embedded);
+        let r = match lock.tool.get("chatgpt-image") {
+            Some(t) => std::fs::create_dir_all(&tools_dir).map_err(|e| e.to_string()).and_then(|_| jugg_tools::install::install(&tools_dir, "chatgpt-image", t)),
+            None => Err("this release has no chatgpt-image entry".into()),
+        };
+        *INSTALL.lock().unwrap_or_else(|e| e.into_inner()) = match r {
+            Ok(_) => "ok".into(),
+            Err(e) => format!("failed: {}", e.chars().take(300).collect::<String>()),
+        };
+    });
 }
 
 // ------------------------------------------------------------------ status for Settings

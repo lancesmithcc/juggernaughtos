@@ -1,4 +1,4 @@
-use crate::api::{get_overview, start_turn, ApprovalView, AssetCard, StreamEvent, ToolActivity};
+use crate::api::{get_overview, image_status, start_turn, ApprovalView, AssetCard, StreamEvent, ToolActivity};
 use crate::pages::assets::{ApprovalCard, AssetTile};
 use leptos::prelude::*;
 
@@ -12,11 +12,13 @@ struct Msg {
     streaming: RwSignal<bool>,
     assets: RwSignal<Vec<AssetCard>>,
     approvals: RwSignal<Vec<ApprovalView>>,
+    /// An image needed ChatGPT and it isn't connected: show the Connect card.
+    needs_connect: RwSignal<bool>,
 }
 
 impl Msg {
     fn new(id: usize, user: bool, text: String) -> Self {
-        Self { id, user, text: RwSignal::new(text), tools: RwSignal::new(vec![]), live: RwSignal::new(None), streaming: RwSignal::new(!user), assets: RwSignal::new(vec![]), approvals: RwSignal::new(vec![]) }
+        Self { id, user, text: RwSignal::new(text), tools: RwSignal::new(vec![]), live: RwSignal::new(None), streaming: RwSignal::new(!user), assets: RwSignal::new(vec![]), approvals: RwSignal::new(vec![]), needs_connect: RwSignal::new(false) }
     }
 }
 
@@ -29,6 +31,8 @@ pub fn ChatPage() -> impl IntoView {
     let busy = RwSignal::new(false);
     let next_id = StoredValue::new(0usize);
     let chatgpt = use_context::<crate::pages::panels::ChatGptPrompt>();
+    // Set when an image failed for want of ChatGPT; once the owner connects, carry on.
+    let retry_image = StoredValue::new(false);
 
     let submit = move |text: String| {
         let text = text.trim().to_string();
@@ -52,11 +56,21 @@ pub fn ChatPage() -> impl IntoView {
                         StreamEvent::ToolStarted { name } => reply.live.set(Some(format!("Using {}…", name.replace('_', " ")))),
                         StreamEvent::ToolFinished { name, summary, is_error } => {
                             reply.live.set(None);
-                            // An image needs the owner's ChatGPT: pop the connect window right away.
-                            if name.ends_with("generate_image") && summary.contains("Sign in to ChatGPT") {
-                                if let Some(p) = chatgpt {
-                                    p.0.set(true);
-                                }
+                            // An image needs the owner's ChatGPT: if it isn't connected, ask right away.
+                            if name.ends_with("generate_image") {
+                                let failed = is_error || summary.contains("No image this time");
+                                leptos::task::spawn_local(async move {
+                                    let Ok(st) = image_status().await else { return };
+                                    if !(st.installed && st.session == "signed_in") {
+                                        reply.needs_connect.set(true);
+                                        if failed {
+                                            retry_image.set_value(true);
+                                            if let Some(p) = chatgpt {
+                                                p.open.set(true);
+                                            }
+                                        }
+                                    }
+                                });
                             }
                             reply.tools.update(|t| t.push(ToolActivity { name, summary: summary.chars().take(240).collect(), is_error }));
                         }
@@ -82,6 +96,22 @@ pub fn ChatPage() -> impl IntoView {
             }
         });
     };
+
+    if let Some(p) = chatgpt {
+        Effect::new(move |prev: Option<u32>| {
+            let n = p.connected.get();
+            if prev.is_some_and(|before| before != n) && retry_image.get_value() {
+                retry_image.set_value(false);
+                messages.update(|m| {
+                    for msg in m.iter() {
+                        msg.needs_connect.set(false);
+                    }
+                });
+                submit("ChatGPT is connected now. Please go ahead and make the image I asked for.".into());
+            }
+            n
+        });
+    }
 
     // Server renders a neutral greeting; the browser swaps in time-of-day (no hydration mismatch).
     let greet = RwSignal::new("Welcome back.");
@@ -161,7 +191,8 @@ fn Message(msg: Msg) -> impl IntoView {
     if msg.user {
         return view! { <div class="msg user"><div class="bubble">{move || msg.text.get()}</div></div> }.into_any();
     }
-    let Msg { text, tools, live, streaming, assets, approvals, .. } = msg;
+    let Msg { text, tools, live, streaming, assets, approvals, needs_connect, .. } = msg;
+    let chatgpt = use_context::<crate::pages::panels::ChatGptPrompt>();
     let waiting = move || streaming.get() && text.with(|t| t.is_empty()) && tools.with(|t| t.is_empty());
     view! {
         <div class="msg assistant" class:streaming=move || streaming.get()>
@@ -177,6 +208,15 @@ fn Message(msg: Msg) -> impl IntoView {
                 {move || live.get().map(|l| view! { <p class="live">{l}</p> })}
                 <Show when=waiting fallback=move || view! { <div class="text md" inner_html=move || crate::markdown::render(&text.get())></div> }>
                     <span class="dots" aria-label="Working"><i></i><i></i><i></i></span>
+                </Show>
+                <Show when=move || needs_connect.get()>
+                    <div class="connect-card">
+                        <div>
+                            <strong>"Connect your ChatGPT for images"</strong>
+                            <p>"New images are made with GPT Image through your own ChatGPT account. Connect it once (about a minute) and I'll carry on with your image."</p>
+                        </div>
+                        <button class="btn primary" type="button" on:click=move |_| { if let Some(p) = chatgpt { p.open.set(true); } }>"Connect ChatGPT"</button>
+                    </div>
                 </Show>
                 <Show when=move || !approvals.with(|a| a.is_empty())>
                     <div class="chat-approvals">

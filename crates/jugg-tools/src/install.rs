@@ -144,7 +144,28 @@ fn install_bundled_node(name: &str, t: &LockedTool, staging: &Path, a: &str) -> 
             std::fs::copy(entry.path(), staging.join(&f)).map_err(|e| e.to_string())?;
         }
     }
-    // Pinned Node.js (distro packages are often too old for Playwright).
+    // Pinned Node.js (distro packages are often too old for Playwright). Pins are for
+    // Linux servers; a macOS development machine uses its own Node 20+.
+    if cfg!(target_os = "macos") {
+        let v = run(Command::new("node").arg("--version")).map_err(|_| "Node.js 20+ is required".to_string())?;
+        let major: u32 = v.trim().trim_start_matches('v').split('.').next().and_then(|m| m.parse().ok()).unwrap_or(0);
+        if major < 20 {
+            return Err(format!("Node.js 20+ is required, found {}", v.trim()));
+        }
+        // The wrapper looks for node next to itself; point that at this Mac's Node.
+        let system_node = run(Command::new("sh").args(["-c", "command -v node"]))?.trim().to_string();
+        std::fs::create_dir_all(staging.join("node/bin")).map_err(|e| e.to_string())?;
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&system_node, staging.join("node/bin/node")).map_err(|e| e.to_string())?;
+        run(Command::new("npm").args(["ci", "--omit=dev", "--no-audit", "--no-fund", "--ignore-scripts"]).current_dir(staging))?;
+        run(Command::new("node").arg(staging.join("node_modules/playwright-core/cli.js")).args(["install", "--no-shell", "chromium"]).current_dir(staging).env("PLAYWRIGHT_BROWSERS_PATH", staging.join("browsers")))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(staging.join(&t.bin), std::fs::Permissions::from_mode(0o755));
+        }
+        return Ok(());
+    }
     let d = t.dist.as_ref().ok_or("lock entry has no dist")?;
     let nv = d.node_version.as_ref().ok_or("lock entry has no node_version")?;
     let (node_arch, pin) = if a == "aarch64" { ("arm64", &d.node_sha256_aarch64) } else { ("x64", &d.node_sha256_x86_64) };

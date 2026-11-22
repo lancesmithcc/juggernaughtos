@@ -1,6 +1,6 @@
 //! Sidebar panels. Everything here is also doable from chat; panels are for looking.
 
-use crate::api::{chatgpt_check, chatgpt_signin_frame, chatgpt_signin_input, chatgpt_signin_start, image_settings, image_status, save_image_settings, get_site, publish_site, rollback_site, get_brand, get_providers, get_security, get_sign_in_methods, get_standards, get_tools, save_provider_settings};
+use crate::api::{chatgpt_check, chatgpt_install, chatgpt_signin_frame, chatgpt_signin_input, chatgpt_signin_start, image_settings, image_status, save_image_settings, get_site, publish_site, rollback_site, get_brand, get_providers, get_security, get_sign_in_methods, get_standards, get_tools, save_provider_settings};
 use crate::pages::account::{AddPasskey, RegenerateRecovery, TotpEnroll};
 use leptos::prelude::*;
 
@@ -323,14 +323,24 @@ fn SignIn() -> impl IntoView {
     }
 }
 
-/// App-wide switch for the "Connect ChatGPT" pop-up (chat opens it when an image needs it).
+/// App-wide "Connect ChatGPT" pop-up. Chat opens it when an image needs it and is told
+/// (via `connected`) when the owner finishes, so the image request can carry on.
 #[derive(Clone, Copy)]
-pub struct ChatGptPrompt(pub RwSignal<bool>);
+pub struct ChatGptPrompt {
+    pub open: RwSignal<bool>,
+    pub connected: RwSignal<u32>,
+}
+
+impl ChatGptPrompt {
+    pub fn new() -> Self {
+        Self { open: RwSignal::new(false), connected: RwSignal::new(0) }
+    }
+}
 
 #[component]
 fn ChatGptImages() -> impl IntoView {
     let status = Resource::new(|| (), |_| image_status());
-    let prompt = use_context::<ChatGptPrompt>().map(|p| p.0).unwrap_or_else(|| RwSignal::new(false));
+    let prompt = use_context::<ChatGptPrompt>().map(|p| p.open).unwrap_or_else(|| RwSignal::new(false));
     let msg = RwSignal::new(None::<String>);
     // Refresh the status card whenever the pop-up closes.
     Effect::new(move |prev: Option<bool>| {
@@ -359,7 +369,7 @@ fn ChatGptImages() -> impl IntoView {
                 {move || Suspend::new(async move {
                     status.await.map(|s| {
                         let (ready, label) = match (s.installed, s.session.as_str()) {
-                            (false, _) => (false, "Not installed on this server: sudo juggernaught tools install chatgpt-image".to_string()),
+                            (false, _) => (false, "Not set up yet: press Connect ChatGPT".to_string()),
                             (true, "signed_in") => (true, "ChatGPT connected (default image maker)".to_string()),
                             (true, "bot_check") => (false, "ChatGPT wants a quick human check".to_string()),
                             (true, "signed_out") => (false, "ChatGPT not connected yet".to_string()),
@@ -369,12 +379,10 @@ fn ChatGptImages() -> impl IntoView {
                         view! {
                             <p class="provider-status" data-ready=ready.to_string()><span class="dot"></span>{label}</p>
                             <p class="hint">{paused}{format!("{} of {} this hour · {} of {} today · one at a time, at least {} s apart{}", s.used_hour, s.per_hour, s.used_day, s.per_day, s.min_gap_secs, if s.api_key_set { " · API key set as fallback" } else { "" })}</p>
-                            {s.installed.then(|| view! {
-                                <div class="row-actions">
-                                    <button class="btn primary" type="button" on:click=move |_| prompt.set(true)>{if ready { "Reconnect ChatGPT" } else { "Connect ChatGPT" }}</button>
-                                    <button class="btn ghost" type="button" on:click=check>"Check connection"</button>
-                                </div>
-                            })}
+                            <div class="row-actions">
+                                <button class="btn primary" type="button" on:click=move |_| prompt.set(true)>{if ready { "Reconnect ChatGPT" } else { "Connect ChatGPT" }}</button>
+                                {s.installed.then(|| view! { <button class="btn ghost" type="button" on:click=check>"Check connection"</button> })}
+                            </div>
                         }
                     })
                 })}
@@ -388,7 +396,7 @@ fn ChatGptImages() -> impl IntoView {
 /// picture and just types; keys go straight to the browser. Each step says what to do.
 #[component]
 pub fn ChatGptSignInDialog() -> impl IntoView {
-    let Some(ChatGptPrompt(open)) = use_context::<ChatGptPrompt>() else { return ().into_any() };
+    let Some(ChatGptPrompt { open, connected }) = use_context::<ChatGptPrompt>() else { return ().into_any() };
     let frame = RwSignal::new(None::<String>);
     let step = RwSignal::new(String::from("starting"));
     let err = RwSignal::new(None::<String>);
@@ -417,9 +425,50 @@ pub fn ChatGptSignInDialog() -> impl IntoView {
             step.set(f.step.clone());
             if f.step == "done" {
                 stop_polling();
+                connected.update(|n| *n += 1);
                 set_timeout(move || open.set(false), std::time::Duration::from_millis(2200));
             } else if !f.active && frame.get_untracked().is_some() {
                 stop_polling();
+            }
+        });
+    };
+    let begin_sign_in = move || {
+        step.set("starting".into());
+        leptos::task::spawn_local(async move {
+            match chatgpt_signin_start().await {
+                Ok(()) => {
+                    if poll.get_value().is_none() {
+                        poll.set_value(set_interval_with_handle(tick, std::time::Duration::from_millis(700)).ok());
+                    }
+                    if let Some(el) = screen.get_untracked() {
+                        let _ = el.focus();
+                    }
+                }
+                Err(e) => {
+                    step.set("closed".into());
+                    err.set(Some(e.to_string()));
+                }
+            }
+        });
+    };
+    // First time on this server: set the image maker up, then go straight to sign-in.
+    let setup_poll = StoredValue::new(None::<IntervalHandle>);
+    let stop_setup = move || {
+        if let Some(h) = setup_poll.get_value() {
+            h.clear();
+            setup_poll.set_value(None);
+        }
+    };
+    let setup_tick = move || {
+        leptos::task::spawn_local(async move {
+            let Ok(s) = image_status().await else { return };
+            if s.installed || s.install == "ok" {
+                stop_setup();
+                begin_sign_in();
+            } else if let Some(why) = s.install.strip_prefix("failed: ") {
+                stop_setup();
+                step.set("setup_failed".into());
+                err.set(Some(why.to_string()));
             }
         });
     };
@@ -429,24 +478,24 @@ pub fn ChatGptSignInDialog() -> impl IntoView {
             step.set("starting".into());
             err.set(None);
             leptos::task::spawn_local(async move {
-                match chatgpt_signin_start().await {
-                    Ok(()) => {
-                        if poll.get_value().is_none() {
-                            poll.set_value(set_interval_with_handle(tick, std::time::Duration::from_millis(700)).ok());
-                        }
-                        if let Some(el) = screen.get_untracked() {
-                            let _ = el.focus();
+                match image_status().await {
+                    Ok(s) if !s.installed => {
+                        step.set("setup".into());
+                        let _ = chatgpt_install().await;
+                        if setup_poll.get_value().is_none() {
+                            setup_poll.set_value(set_interval_with_handle(setup_tick, std::time::Duration::from_millis(2000)).ok());
                         }
                     }
-                    Err(e) => err.set(Some(e.to_string())),
+                    _ => begin_sign_in(),
                 }
             });
         } else {
             stop_polling();
+            stop_setup();
         }
     });
     let close = move || {
-        if step.get_untracked() != "done" {
+        if !matches!(step.get_untracked().as_str(), "done" | "setup" | "setup_failed" | "closed") {
             send("stop", 0.0, 0.0, String::new());
         }
         open.set(false);
@@ -492,6 +541,8 @@ pub fn ChatGptSignInDialog() -> impl IntoView {
         send("scroll", 0.0, ev.delta_y(), String::new());
     };
     let instruction = move || match step.get().as_str() {
+        "setup" => "One-time setup: getting the image maker ready on your server (a few minutes the first time)…",
+        "setup_failed" => "Setup needs the server's admin once. Run this on the server, then press Try again:",
         "starting" => "Opening a private browser on your server…",
         "log_in" => "Click “Log in” on the picture, then sign in the way you usually do.",
         "signing_in" => "Sign in: click a box on the picture and type. Email codes and Google/Apple sign-in work too.",
@@ -507,6 +558,7 @@ pub fn ChatGptSignInDialog() -> impl IntoView {
                         <div>
                             <h2 id="cg-title">"Connect ChatGPT"</h2>
                             <ol class="cg-steps">
+                                <li class:on=move || matches!(step.get().as_str(), "setup" | "setup_failed")>"Set up"</li>
                                 <li class:on=move || matches!(step.get().as_str(), "starting" | "log_in" | "signing_in")>"Sign in"</li>
                                 <li class:on=move || step.get() == "human_check">"Human check, if asked"</li>
                                 <li class:on=move || step.get() == "done">"Done"</li>
@@ -515,15 +567,21 @@ pub fn ChatGptSignInDialog() -> impl IntoView {
                         <button class="btn small ghost" type="button" on:click=move |_| close()>{move || if step.get() == "done" { "Close" } else { "Cancel" }}</button>
                     </header>
                     <p class="modal-say" role="status" data-step=move || step.get()>{instruction}</p>
-                    {move || err.get().map(|e| view! { <p class="hint err" role="alert">{e}</p> })}
+                    {move || (step.get() == "setup_failed").then(|| view! {
+                        <pre class="cmd"><code>"sudo juggernaught tools install chatgpt-image"</code></pre>
+                        <details class="hint"><summary>"Why"</summary>{move || err.get()}</details>
+                    })}
+                    {move || err.get().filter(|_| step.get() != "setup_failed").map(|e| view! { <p class="hint err" role="alert">{e}</p> })}
                     <div class="remote-browser" tabindex="0" node_ref=screen on:keydown=keydown on:paste=paste>
-                        {move || match frame.get() {
-                            Some(f) => view! { <img src=format!("data:image/jpeg;base64,{f}") alt="Your server's private browser showing ChatGPT" width="1280" height="900" on:click=click on:wheel=wheel/> }.into_any(),
-                            None => view! { <div class="remote-wait"><span class="spinner"></span>"Starting the browser…"</div> }.into_any(),
+                        {move || match (frame.get(), step.get().as_str()) {
+                            (Some(f), _) => view! { <img src=format!("data:image/jpeg;base64,{f}") alt="Your server's private browser showing ChatGPT" width="1280" height="900" on:click=click on:wheel=wheel/> }.into_any(),
+                            (None, "setup") => view! { <div class="remote-wait"><span class="spinner"></span>"Setting up the image maker…"</div> }.into_any(),
+                            (None, "setup_failed" | "closed") => view! { <div class="remote-wait">"Nothing running yet."</div> }.into_any(),
+                            _ => view! { <div class="remote-wait"><span class="spinner"></span>"Starting the browser…"</div> }.into_any(),
                         }}
                     </div>
                     <p class="hint">"Click on the picture, then just type: your keys and pastes go to that browser and are never saved. Scroll with your mouse or trackpad."</p>
-                    {move || (step.get() == "closed").then(|| view! { <button class="btn primary" type="button" on:click=move |_| { open.set(false); set_timeout(move || open.set(true), std::time::Duration::from_millis(50)); }>"Try again"</button> })}
+                    {move || matches!(step.get().as_str(), "closed" | "setup_failed").then(|| view! { <button class="btn primary" type="button" on:click=move |_| { open.set(false); set_timeout(move || open.set(true), std::time::Duration::from_millis(50)); }>"Try again"</button> })}
                 </div>
             </div>
         </Show>

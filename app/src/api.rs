@@ -553,6 +553,8 @@ pub struct ImageStatusView {
     pub paused_until: Option<i64>,
     pub paused_reason: Option<String>,
     pub api_key_set: bool,
+    /// One-click install from the pop-up: "" | running | ok | failed: …
+    pub install: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -580,7 +582,17 @@ pub async fn image_status() -> Result<ImageStatusView, ServerFnError> {
         paused_until: u.paused_until,
         paused_reason: u.paused_reason,
         api_key_set: crate::studio::image_key(&st.site).await.is_some(),
+        install: crate::images::install_state(),
     })
+}
+
+#[server]
+pub async fn chatgpt_install() -> Result<(), ServerFnError> {
+    let st = ctx::state()?;
+    let user = ctx::user(&st).await?;
+    crate::images::start_install(&st.site);
+    let _ = jugg_db::audit::append(&st.pool, Some(&st.signer), &user, "tools.install_requested", &serde_json::json!({ "tool": "chatgpt-image" })).await;
+    Ok(())
 }
 
 #[server]

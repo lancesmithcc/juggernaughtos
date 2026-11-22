@@ -450,6 +450,9 @@ fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: 10px; }
 .sub-h { margin: 8px 0 0; font-size: 15px; font-weight: 700; }
 .row-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 /* ------------------------------------------------------------ Connect ChatGPT pop-up */
+.connect-card { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; justify-content: space-between; margin-top: 12px; padding: 16px 18px; border-radius: 16px; border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--line)); background: var(--primary-soft); animation: rise var(--base) var(--ease); }
+.connect-card > div { flex: 1; min-width: 220px; }
+.connect-card p { margin: 4px 0 0; color: var(--ink-soft); font-size: 14px; }
 .modal-backdrop { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 16px; background: color-mix(in srgb, var(--ink) 42%, transparent); backdrop-filter: blur(6px); animation: fade-in var(--base) var(--ease); }
 .modal { width: min(980px, 100%); max-height: calc(100dvh - 32px); overflow: auto; display: grid; gap: 12px; padding: 20px; border-radius: 22px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-2); animation: rise var(--base) var(--ease); }
 .modal-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
@@ -469,6 +472,8 @@ fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: 10px; }
 .remote-wait { aspect-ratio: 1280 / 900; display: flex; gap: 10px; align-items: center; justify-content: center; border-radius: 14px; border: 1px dashed var(--line); color: var(--ink-faint); }
 .spinner { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--primary); animation: spin 0.9s linear infinite; }
 .hint.err { color: var(--err); }
+.cmd { margin: 0; padding: 12px 14px; border-radius: 12px; background: var(--surface-sunk); overflow-x: auto; }
+.cmd code { user-select: all; font-size: 14px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .modal-backdrop, .modal, .spinner { animation: none; } }
