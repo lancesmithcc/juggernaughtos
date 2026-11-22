@@ -5,11 +5,19 @@
 /// Base ruleset written at install (`/etc/nftables.d/juggernaught.nft`).
 /// Deny inbound by default; allow 80/443 (public site + ACME), SSH only from
 /// the admin allow-list or the Tailscale range when configured.
-pub fn base_ruleset(ssh_allow: &[String]) -> String {
+pub fn base_ruleset(ssh_allow: &[String], ssh_port: u16) -> String {
+    let (v4, v6): (Vec<&String>, Vec<&String>) = ssh_allow.iter().partition(|a| !a.contains(':'));
     let ssh = if ssh_allow.is_empty() {
-        "tcp dport 22 ct state new limit rate 6/minute accept".to_string()
+        format!("tcp dport {ssh_port} ct state new limit rate 6/minute accept")
     } else {
-        format!("ip saddr {{ {} }} tcp dport 22 accept", ssh_allow.join(", "))
+        let mut rules = Vec::new();
+        if !v4.is_empty() {
+            rules.push(format!("ip saddr {{ {} }} tcp dport {ssh_port} accept", v4.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")));
+        }
+        if !v6.is_empty() {
+            rules.push(format!("ip6 saddr {{ {} }} tcp dport {ssh_port} accept", v6.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")));
+        }
+        rules.join("\n\t\t")
     };
     format!(
         "table inet juggernaught {{\n\
@@ -45,6 +53,9 @@ mod tests {
     fn ban_rejects_injection() {
         assert!(super::ban_command("1.2.3.4; rm -rf /", 60).is_none());
         assert_eq!(super::ban_command("2001:db8::1", 60).unwrap()[4], "banned6");
-        assert!(super::base_ruleset(&[]).contains("policy drop"));
+        let r = super::base_ruleset(&[], 2222);
+        assert!(r.contains("policy drop") && r.contains("tcp dport 2222"));
+        let r = super::base_ruleset(&["100.64.0.0/10".into(), "fd7a:115c:a1e0::/48".into()], 22);
+        assert!(r.contains("ip saddr { 100.64.0.0/10 }") && r.contains("ip6 saddr { fd7a:115c:a1e0::/48 }"));
     }
 }

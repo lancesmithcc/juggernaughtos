@@ -49,6 +49,33 @@ Connect intelligence in **Settings → Intelligence**, or from the server shell:
 juggernaught setup-url
 ```
 
+## Install on a server
+
+On a fresh Ubuntu 24.04+ or Debian 12+ machine with DNS for `example.com`, `www.` and `admin.`
+pointing at it:
+
+```bash
+curl -fsSLO https://github.com/lancesmithcc/juggernaughtos/releases/latest/download/install.sh
+```
+
+```bash
+sudo bash install.sh --domain example.com --email you@example.com
+```
+
+Behind a tunnel (Cloudflare Tunnel, Tailscale Funnel, a reverse proxy) use `--tls proxy`, and the app
+listens on `127.0.0.1:8080`. `--ssh-allow 100.64.0.0/10` limits SSH to your tailnet. The installer
+prints a one-time setup link and the command for the owner's offline recovery key.
+
+Build a release tarball yourself (needs Docker):
+
+```bash
+scripts/build-linux.sh
+```
+
+```bash
+scripts/smoke-linux.sh
+```
+
 ## Hardware
 
 The LLM runs remotely (subscription or API), so no GPU is needed. What costs

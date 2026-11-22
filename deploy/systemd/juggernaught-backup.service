@@ -1,0 +1,19 @@
+[Unit]
+Description=Juggernaught encrypted backup
+After=juggernaught.service
+
+[Service]
+Type=oneshot
+User=jugg
+Group=jugg
+Environment=JUGG_CONFIG=/etc/juggernaught/juggernaught.toml
+ExecStart=/opt/juggernaught/current/bin/juggernaught backup create
+Nice=10
+IOSchedulingClass=idle
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/juggernaught
+ReadOnlyPaths=/etc/juggernaught
+UMask=0027

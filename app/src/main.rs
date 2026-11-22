@@ -37,8 +37,56 @@ async fn main() {
         SetupUrl,
         /// Print health of crypto, database, provider and tools.
         Doctor,
+        /// Run the security + maintenance daemon (separate user, CAP_NET_ADMIN).
+        Steward {
+            /// Print the running steward's status and exit.
+            #[arg(long)]
+            status: bool,
+        },
+        /// Encrypted, signed backups.
+        Backup {
+            #[command(subcommand)]
+            cmd: BackupCmd,
+        },
+        /// Print the nftables ruleset for this box.
+        Firewall {
+            /// Allow SSH only from these addresses/ranges (e.g. 100.64.0.0/10 for Tailscale).
+            #[arg(long = "ssh-allow")]
+            ssh_allow: Vec<String>,
+            #[arg(long = "ssh-port", default_value_t = 22)]
+            ssh_port: u16,
+        },
     }
 
+    #[derive(Subcommand)]
+    enum BackupCmd {
+        /// Back up the database, assets, site and config now.
+        Create,
+        /// Decrypt the newest backup with this box's key and check every file + the database.
+        Test {
+            file: Option<std::path::PathBuf>,
+        },
+        /// Generate the owner's offline recovery key (store it somewhere safe, off this machine).
+        InitRecovery {
+            #[arg(long, default_value = "juggernaught-recovery-key.json")]
+            out: std::path::PathBuf,
+        },
+        /// Restore onto a fresh machine using the owner's recovery key.
+        Restore {
+            file: std::path::PathBuf,
+            #[arg(long)]
+            recovery_key: std::path::PathBuf,
+        },
+    }
+
+    // Outside `cargo leptos`, tell Leptos where the built site lives.
+    if std::env::var_os("LEPTOS_OUTPUT_NAME").is_none() {
+        std::env::set_var("LEPTOS_OUTPUT_NAME", "juggernaught");
+    }
+    if std::env::var_os("LEPTOS_SITE_ROOT").is_none() {
+        let beside_binary = std::env::current_exe().ok().and_then(|p| p.parent().and_then(|d| d.parent()).map(|d| d.join("site"))).filter(|p| p.join("pkg").exists());
+        std::env::set_var("LEPTOS_SITE_ROOT", beside_binary.unwrap_or_else(|| "target/site".into()));
+    }
     let cli = Cli::parse();
     let cfg = match &cli.config {
         Some(p) => jugg_core::Config::load(p).unwrap_or_else(|e| panic!("config: {e}")),
@@ -49,7 +97,7 @@ async fn main() {
         std::env::set_var("JUGG_DEV_ROOT", cfg.data_dir.parent().unwrap_or(&cfg.data_dir));
     }
 
-    let quiet = matches!(cli.cmd, Some(Cmd::Mcp { .. }) | Some(Cmd::SetupUrl) | Some(Cmd::Doctor) | Some(Cmd::Connect { .. }));
+    let quiet = matches!(cli.cmd, Some(Cmd::Mcp { .. }) | Some(Cmd::SetupUrl) | Some(Cmd::Doctor) | Some(Cmd::Connect { .. }) | Some(Cmd::Firewall { .. }) | Some(Cmd::Steward { status: true }));
     let filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| if quiet { "warn,sqlx=warn".into() } else { "info,sqlx=warn".into() });
     tracing_subscriber::fmt().with_env_filter(filter).with_writer(std::io::stderr).init();
 
@@ -66,6 +114,87 @@ async fn main() {
         return;
     }
 
+    // Commands that must not touch the app's keys or database.
+    match &cli.cmd {
+        Some(Cmd::Firewall { ssh_allow, ssh_port }) => {
+            for a in ssh_allow {
+                if a.parse::<std::net::IpAddr>().is_err() && !a.split_once('/').is_some_and(|(ip, bits)| ip.parse::<std::net::IpAddr>().is_ok() && bits.parse::<u8>().is_ok()) {
+                    eprintln!("--ssh-allow {a}: not an IP address or CIDR range");
+                    std::process::exit(2);
+                }
+            }
+            print!("{}", jugg_steward::firewall::base_ruleset(ssh_allow, *ssh_port));
+            return;
+        }
+        Some(Cmd::Steward { status: true }) => {
+            match jugg_steward::client::StewardClient::spawn(cfg.steward_socket.clone()).status().await {
+                Some(s) => println!("{}", serde_json::to_string_pretty(&s).unwrap_or_default()),
+                None => {
+                    eprintln!("Steward is not running at {}", cfg.steward_socket.display());
+                    std::process::exit(1);
+                }
+            }
+            return;
+        }
+        Some(Cmd::Steward { status: false }) => {
+            if let Err(e) = jugg_steward::daemon::run(cfg).await {
+                eprintln!("steward: {e}");
+                std::process::exit(1);
+            }
+            return;
+        }
+        Some(Cmd::Backup { cmd: BackupCmd::InitRecovery { out } }) => {
+            let (file, public) = jugg_backup::new_recovery_key().expect("keygen");
+            let json = serde_json::to_string_pretty(&file).expect("json");
+            {
+                use std::io::Write;
+                let mut o = std::fs::OpenOptions::new();
+                o.write(true).create_new(true);
+                #[cfg(unix)]
+                std::os::unix::fs::OpenOptionsExt::mode(&mut o, 0o600);
+                match o.open(out) {
+                    Ok(mut f) => f.write_all(json.as_bytes()).expect("write recovery key"),
+                    Err(e) => {
+                        eprintln!("{}: {e} (refusing to overwrite)", out.display());
+                        std::process::exit(1);
+                    }
+                }
+            }
+            let pub_path = &cfg.backup.recovery_public_key;
+            if let Some(d) = pub_path.parent() {
+                let _ = std::fs::create_dir_all(d);
+            }
+            std::fs::write(pub_path, serde_json::to_string_pretty(&public).expect("json")).expect("write public key");
+            println!("Recovery key written to {}.", out.display());
+            println!("Move it OFF this machine now (password manager, USB key, printed QR). Without it, a dead server cannot be restored elsewhere.");
+            println!("Public half installed at {}; every backup from now on is escrowed to it.", pub_path.display());
+            return;
+        }
+        Some(Cmd::Backup { cmd: BackupCmd::Restore { file, recovery_key } }) => {
+            let rk: jugg_backup::RecoveryKeyFile = serde_json::from_slice(&std::fs::read(recovery_key).expect("read recovery key")).expect("recovery key file");
+            let sk = rk.secret().expect("recovery key");
+            if cfg.db_path().exists() || cfg.keys_dir.join("kek-1.key").exists() {
+                eprintln!("This machine already has data at {}. Restore only onto a fresh install.", cfg.data_dir.display());
+                std::process::exit(1);
+            }
+            let stage = cfg.data_dir.join(".restore");
+            let (header, index) = jugg_backup::open(file, jugg_backup::Unlock::Recovery(&sk), &[], Some(&stage)).unwrap_or_else(|e| panic!("restore: {e}"));
+            let keks = jugg_backup::escrowed_keks(&header, &sk).unwrap_or_else(|e| panic!("keys: {e}"));
+            jugg_crypto::Keyring::restore_from_escrow(&cfg.keys_dir, &keks).unwrap_or_else(|e| panic!("keys: {e}"));
+            std::fs::rename(stage.join("db/juggernaught.db"), cfg.db_path()).expect("database");
+            for (from, to) in [("assets", cfg.assets_dir()), ("site", cfg.data_dir.join("site"))] {
+                if stage.join(from).exists() {
+                    let _ = std::fs::remove_dir_all(&to);
+                    std::fs::rename(stage.join(from), &to).expect("restore files");
+                }
+            }
+            let _ = std::fs::remove_dir_all(&stage);
+            println!("Restored backup {} ({} files). Start the service and sign in as before.", header.id, index.len());
+            return;
+        }
+        _ => {}
+    }
+
     let conf = get_configuration(None).expect("leptos configuration");
     let mut leptos_options = conf.leptos_options;
     if cfg.dev {
@@ -74,7 +203,68 @@ async fn main() {
     let state = AppState::init(cfg, leptos_options.clone()).await.unwrap_or_else(|e| panic!("startup: {e}"));
 
     match cli.cmd.unwrap_or(Cmd::Serve) {
-        Cmd::SetupUrl => unreachable!(),
+        Cmd::SetupUrl | Cmd::Firewall { .. } | Cmd::Steward { .. } => unreachable!(),
+        Cmd::Backup { cmd } => match cmd {
+            BackupCmd::Create => {
+                let tmp = state.cfg.data_dir.join(".backup-db.sqlite");
+                jugg_backup::snapshot_db(&state.pool, &tmp).await.unwrap_or_else(|e| panic!("snapshot: {e}"));
+                let recovery: Option<jugg_crypto::HybridPublicKey> = std::fs::read(&state.cfg.backup.recovery_public_key).ok().and_then(|b| serde_json::from_slice(&b).ok());
+                let mut roots: Vec<(&str, std::path::PathBuf)> = vec![("db/juggernaught.db", tmp.clone()), ("assets", state.cfg.assets_dir()), ("site", state.cfg.data_dir.join("site"))];
+                if let Some(c) = &cli.config {
+                    roots.push(("config/juggernaught.toml", c.clone()));
+                }
+                let files = jugg_backup::collect(&roots);
+                let report = jugg_backup::create(&state.cfg.backup.dir, &files, &state.ring, &state.signer, recovery.as_ref());
+                let _ = std::fs::remove_file(&tmp);
+                let report = report.unwrap_or_else(|e| panic!("backup: {e}"));
+                let pruned = jugg_backup::prune(&state.cfg.backup.dir, state.cfg.backup.keep).unwrap_or_default();
+                if let Some(remote) = &state.cfg.backup.rclone_remote {
+                    let ok = std::process::Command::new("rclone").args(["copy", "--immutable"]).arg(&report.file).arg(remote).status().map(|s| s.success()).unwrap_or(false);
+                    println!("off-box copy to {remote}: {}", if ok { "ok" } else { "FAILED" });
+                }
+                let _ = jugg_db::audit::append(&state.pool, Some(&state.signer), "steward", "backup.created", &serde_json::json!({ "id": report.id, "files": report.entries, "bytes": report.bytes })).await;
+                println!("{}", serde_json::to_string_pretty(&report).unwrap_or_default());
+                if !report.recovery_escrow {
+                    eprintln!("warning: no recovery key installed; this backup can only be restored on THIS machine. Run `juggernaught backup init-recovery`.");
+                }
+                if !pruned.is_empty() {
+                    println!("pruned {} old backup(s)", pruned.len());
+                }
+            }
+            BackupCmd::Test { file } => {
+                let Some(file) = file.or_else(|| jugg_backup::latest(&state.cfg.backup.dir)) else {
+                    eprintln!("no backups in {}", state.cfg.backup.dir.display());
+                    std::process::exit(1);
+                };
+                let scratch = state.cfg.data_dir.join(".restore-test");
+                let _ = std::fs::remove_dir_all(&scratch);
+                let result = jugg_backup::open(&file, jugg_backup::Unlock::Box(&state.ring), &[state.signer.public_key()], Some(&scratch));
+                let verdict = match result {
+                    Ok((h, idx)) => {
+                        let db = scratch.join("db/juggernaught.db");
+                        let integrity = match jugg_db::sqlx::sqlite::SqlitePoolOptions::new().max_connections(1).connect(&format!("sqlite://{}?mode=ro", db.display())).await {
+                            Ok(p) => jugg_db::sqlx::query_scalar::<_, String>("PRAGMA integrity_check").fetch_one(&p).await.unwrap_or_else(|e| e.to_string()),
+                            Err(e) => e.to_string(),
+                        };
+                        if integrity == "ok" {
+                            Ok(format!("backup {} restores cleanly: {} files, database integrity ok", h.id, idx.len()))
+                        } else {
+                            Err(format!("database in backup {} is damaged: {integrity}", h.id))
+                        }
+                    }
+                    Err(e) => Err(e.to_string()),
+                };
+                let _ = std::fs::remove_dir_all(&scratch);
+                match verdict {
+                    Ok(m) => println!("{m}"),
+                    Err(e) => {
+                        eprintln!("RESTORE TEST FAILED: {e}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            BackupCmd::InitRecovery { .. } | BackupCmd::Restore { .. } => unreachable!(),
+        },
         Cmd::Mcp { conversation } => {
             let brand = state.brand.read().await.clone();
             let ctx = jugg_tools::ToolContext {
@@ -142,6 +332,7 @@ async fn main() {
         }
         Cmd::Serve => {
             let addr = leptos_options.site_addr;
+            let st_cfg = state.cfg.clone();
             let routes = generate_route_list(App);
             let app = Router::new()
                 .route("/brand.css", get(brand_css))
@@ -158,12 +349,46 @@ async fn main() {
                 })
                 .fallback(leptos_axum::file_and_error_handler::<AppState, _>(shell))
                 .layer(axum::middleware::from_fn_with_state(state.clone(), auth_gate))
+                .layer(axum::middleware::from_fn_with_state(state.clone(), juggernaught::web::host_router))
                 .layer(axum::middleware::from_fn_with_state(state.clone(), security_layer))
                 .layer(tower_http::compression::CompressionLayer::new())
                 .with_state(state);
-            tracing::info!("Juggernaught listening on http://{addr}");
-            let listener = tokio::net::TcpListener::bind(&addr).await.expect("bind");
-            axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await.expect("server");
+            let tls = !st_cfg.dev && st_cfg.domain.is_some() && st_cfg.tls.mode == jugg_core::config::TlsMode::Acme;
+            if !tls {
+                let addr: SocketAddr = if st_cfg.dev { addr } else { st_cfg.listen_http.parse().expect("listen_http") };
+                tracing::info!("Juggernaught listening on http://{addr}");
+                let listener = tokio::net::TcpListener::bind(&addr).await.expect("bind");
+                axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await.expect("server");
+                return;
+            }
+            // Production: Let's Encrypt via TLS-ALPN-01 on :443, PQ-hybrid key exchange first.
+            use futures::StreamExt;
+            let mut acme = rustls_acme::AcmeConfig::new(st_cfg.hostnames())
+                .contact(st_cfg.acme_email.iter().map(|e| format!("mailto:{e}")))
+                .cache(rustls_acme::caches::DirCache::new(st_cfg.acme_cache()))
+                .directory_lets_encrypt(!st_cfg.tls.staging)
+                .state();
+            let provider = std::sync::Arc::new(rustls::crypto::aws_lc_rs::default_provider());
+            let mut server_cfg = (*acme.default_rustls_config_with_provider(provider)).clone();
+            server_cfg.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
+            let acceptor = acme.axum_acceptor(std::sync::Arc::new(server_cfg));
+            tokio::spawn(async move {
+                while let Some(ev) = acme.next().await {
+                    match ev {
+                        Ok(ok) => tracing::info!(?ok, "acme"),
+                        Err(err) => tracing::error!(%err, "acme"),
+                    }
+                }
+            });
+            let http_addr: SocketAddr = st_cfg.listen_http.parse().expect("listen_http");
+            tokio::spawn(async move {
+                let redirect = Router::new().fallback(juggernaught::web::redirect_to_https);
+                let l = tokio::net::TcpListener::bind(http_addr).await.expect("bind :80");
+                let _ = axum::serve(l, redirect).await;
+            });
+            let https_addr: SocketAddr = st_cfg.listen_https.parse().expect("listen_https");
+            tracing::info!(hosts = ?st_cfg.hostnames(), "Juggernaught listening on https://{https_addr}");
+            axum_server::bind(https_addr).acceptor(acceptor).serve(app.into_make_service_with_connect_info::<SocketAddr>()).await.expect("server");
         }
     }
 }

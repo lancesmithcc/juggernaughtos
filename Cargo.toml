@@ -12,6 +12,7 @@ members = [
     "crates/jugg-web",
     "crates/jugg-steward",
     "crates/jugg-updater",
+    "crates/jugg-backup",
     "crates/vectorverter-core",
 ]
 
@@ -34,6 +35,7 @@ jugg-tools = { path = "crates/jugg-tools" }
 jugg-web = { path = "crates/jugg-web" }
 jugg-steward = { path = "crates/jugg-steward" }
 jugg-updater = { path = "crates/jugg-updater" }
+jugg-backup = { path = "crates/jugg-backup" }
 vectorverter-core = { path = "crates/vectorverter-core" }
 
 # web / runtime
@@ -82,13 +84,18 @@ pulldown-cmark = { version = "0.13", default-features = false, features = ["html
 web-sys = { version = "0.3", features = ["EventSource", "MessageEvent", "Event", "Window", "Location"] }
 js-sys = "0.3"
 wasm-bindgen-futures = "0.4"
+rustls-acme = { version = "0.15", default-features = false, features = ["aws-lc-rs", "tls12", "webpki-roots", "axum"] }
+axum-server = { version = "0.8" }
 lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "pool", "hostname", "builder", "tokio1", "tokio1-rustls", "aws-lc-rs", "rustls-native-certs"] }
 
 [profile.dev]
 opt-level = 1
+# Keep dev builds small: full debuginfo for a Leptos+aws-lc workspace reached 50 GB.
+debug = "line-tables-only"
 
 [profile.dev.package."*"]
 opt-level = 3
+debug = false
 
 [profile.release]
 lto = "thin"

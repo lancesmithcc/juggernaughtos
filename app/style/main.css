@@ -359,6 +359,9 @@ fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: 10px; }
 .badge.error, .badge.destructive, .badge.publish { background: color-mix(in srgb, var(--err) 14%, transparent); color: var(--err); }
 .badge.warn, .badge.modify { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
 .badge.read { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
+.badge.check-ok { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
+.badge.check-warn { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
+.badge.check-fail { background: color-mix(in srgb, var(--err) 14%, transparent); color: var(--err); }
 .badge.locked { background: var(--ink); color: var(--surface); }
 .posture { display: flex; align-items: center; gap: 14px; padding: 18px 20px; border-radius: 18px; background: var(--raised); border: 1px solid var(--line); }
 .posture p { margin: 0; }

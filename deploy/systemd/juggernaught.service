@@ -1,4 +1,4 @@
-# Juggernaught OS — main service (installed by install.sh, phase 2)
+# Juggernaught OS — admin app + public site (installed by install.sh)
 [Unit]
 Description=Juggernaught OS
 After=network-online.target
@@ -10,6 +10,8 @@ User=jugg
 Group=jugg
 Environment=JUGG_CONFIG=/etc/juggernaught/juggernaught.toml
 Environment=LEPTOS_SITE_ROOT=/opt/juggernaught/current/site
+Environment=RUST_LOG=info,sqlx=warn
+# SMTP password: systemd-creds encrypt, then LoadCredentialEncrypted=smtp_password:/etc/juggernaught/smtp_password.cred
 ExecStart=/opt/juggernaught/current/bin/juggernaught serve
 Restart=always
 RestartSec=3
@@ -22,14 +24,18 @@ PrivateTmp=yes
 PrivateDevices=yes
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
+ProtectKernelLogs=yes
 ProtectControlGroups=yes
+ProtectClock=yes
 RestrictSUIDSGID=yes
-RestrictNamespaces=~net
+RestrictRealtime=yes
 LockPersonality=yes
-RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+# User namespaces stay available: bubblewrap sandboxes the creative tools with them.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 SystemCallArchitectures=native
 SystemCallFilter=@system-service
 ReadWritePaths=/var/lib/juggernaught
+ReadOnlyPaths=/etc/juggernaught
 MemoryMax=80%
 CPUQuota=350%
 UMask=0077

@@ -13,11 +13,13 @@ mod envelope;
 mod hybrid;
 mod keyring;
 mod sign;
+mod stream;
 
 pub use envelope::{blind_index, open, seal, FileCipher, CHUNK_SIZE};
 pub use hybrid::{HybridPublicKey, HybridSecretKey, HybridWrapped};
 pub use keyring::{Keyring, Purpose};
 pub use sign::{verify as verify_signature, Signer, ML_DSA_65_PUBLIC_KEY_LEN};
+pub use stream::{StreamOpener, StreamSealer};
 
 #[derive(Debug, thiserror::Error)]
 pub enum CryptoError {

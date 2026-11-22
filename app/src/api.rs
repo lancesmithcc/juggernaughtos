@@ -100,6 +100,9 @@ pub struct SecurityView {
     pub tasks: Vec<(String, String, String)>,
     pub crypto: Vec<(String, String)>,
     pub sessions: Vec<(String, String, i64)>,
+    pub checks: Vec<(String, String, String)>,
+    pub incidents: Vec<(String, f64)>,
+    pub bans: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

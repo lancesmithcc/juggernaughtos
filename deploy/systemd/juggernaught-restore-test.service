@@ -1,0 +1,16 @@
+[Unit]
+Description=Juggernaught weekly restore test (decrypt newest backup, check every file and the database)
+
+[Service]
+Type=oneshot
+User=jugg
+Group=jugg
+Environment=JUGG_CONFIG=/etc/juggernaught/juggernaught.toml
+ExecStart=/opt/juggernaught/current/bin/juggernaught backup test
+Nice=10
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/juggernaught
+ReadOnlyPaths=/etc/juggernaught

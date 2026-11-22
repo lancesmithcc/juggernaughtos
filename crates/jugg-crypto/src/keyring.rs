@@ -93,6 +93,47 @@ impl Keyring {
         self.active
     }
 
+    /// Raw KEK material for escrow into an encrypted backup (wrapped to the
+    /// owner's offline recovery key). Never log or persist the result in clear.
+    pub fn export_for_escrow(&self) -> Vec<(u8, zeroize::Zeroizing<[u8; 32]>)> {
+        self.keks.iter().map(|(id, k)| (*id, zeroize::Zeroizing::new(*k.0.expose_secret()))).collect()
+    }
+
+    /// Recreate a key directory from escrowed KEKs (disaster restore onto a new box).
+    pub fn restore_from_escrow(dir: impl AsRef<Path>, keks: &[(u8, [u8; 32])]) -> Result<Self> {
+        let dir = dir.as_ref();
+        std::fs::create_dir_all(dir).map_err(|e| CryptoError::KeyStore(e.to_string()))?;
+        restrict_dir(dir)?;
+        for (id, k) in keks {
+            write_secret_file(&dir.join(format!("kek-{id}.key")), k)?;
+        }
+        Self::load_or_create(dir)
+    }
+
+    /// Wrap a data key under the box's file-wrap key (KEK-derived, AES-256-GCM).
+    pub fn wrap_dek(&self, dek: &[u8; 32], context: &[u8]) -> Result<(u8, Vec<u8>)> {
+        use aws_lc_rs::aead::{Aad, LessSafeKey, Nonce, UnboundKey, AES_256_GCM};
+        let (kid, k) = self.derive_active(Purpose::FileWrap)?;
+        let nonce = crate::random_bytes::<12>();
+        let mut buf = dek.to_vec();
+        LessSafeKey::new(UnboundKey::new(&AES_256_GCM, k.expose_secret())?).seal_in_place_append_tag(Nonce::assume_unique_for_key(nonce), Aad::from(context), &mut buf)?;
+        let mut out = nonce.to_vec();
+        out.extend_from_slice(&buf);
+        Ok((kid, out))
+    }
+
+    pub fn unwrap_dek(&self, kid: u8, wrapped: &[u8], context: &[u8]) -> Result<[u8; 32]> {
+        use aws_lc_rs::aead::{Aad, LessSafeKey, Nonce, UnboundKey, AES_256_GCM};
+        if wrapped.len() != 12 + 32 + 16 {
+            return Err(CryptoError::Tampered);
+        }
+        let k = self.derive(kid, Purpose::FileWrap)?;
+        let nonce = Nonce::try_assume_unique_for_key(&wrapped[..12]).map_err(|_| CryptoError::Tampered)?;
+        let mut buf = wrapped[12..].to_vec();
+        let plain = LessSafeKey::new(UnboundKey::new(&AES_256_GCM, k.expose_secret())?).open_in_place(nonce, Aad::from(context), &mut buf).map_err(|_| CryptoError::Tampered)?;
+        plain.try_into().map_err(|_| CryptoError::Tampered)
+    }
+
     /// Derive a 32-byte purpose key from KEK `id` via HKDF-SHA256.
     pub fn derive(&self, id: u8, purpose: Purpose) -> Result<SecretBox<[u8; 32]>> {
         let kek = self.keks.iter().find(|(k, _)| *k == id).map(|(_, k)| k).ok_or(CryptoError::UnknownKey(id))?;

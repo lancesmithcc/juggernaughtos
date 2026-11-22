@@ -20,6 +20,59 @@ pub struct Config {
     pub mail: MailConfig,
     pub steward: StewardConfig,
     pub updates: UpdatePolicy,
+    pub tls: TlsConfig,
+    pub backup: BackupConfig,
+    /// Unix socket the steward daemon listens on.
+    pub steward_socket: PathBuf,
+    /// Steward's own state (separate user, separate database).
+    pub steward_dir: PathBuf,
+}
+
+/// How HTTPS is provided.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TlsMode {
+    /// Built-in Let's Encrypt (TLS-ALPN-01 on :443), PQ-hybrid rustls.
+    Acme,
+    /// Plain HTTP on `listen_http` behind a trusted tunnel/proxy (e.g. Cloudflare Tunnel).
+    Proxy,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct TlsConfig {
+    pub mode: TlsMode,
+    /// Use Let's Encrypt staging (for testing installs without rate limits).
+    pub staging: bool,
+}
+
+impl Default for TlsConfig {
+    fn default() -> Self {
+        Self { mode: TlsMode::Acme, staging: false }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct BackupConfig {
+    pub dir: PathBuf,
+    /// Daily backups kept locally.
+    pub keep: usize,
+    /// Optional rclone remote (`remote:bucket/path`) for off-box copies.
+    pub rclone_remote: Option<String>,
+    /// Owner's offline recovery public key (ML-KEM-768 + X25519).
+    pub recovery_public_key: PathBuf,
+}
+
+impl Default for BackupConfig {
+    fn default() -> Self {
+        Self {
+            dir: "/var/lib/juggernaught/backups".into(),
+            keep: 7,
+            rclone_remote: None,
+            recovery_public_key: "/etc/juggernaught/recovery.pub.json".into(),
+        }
+    }
 }
 
 impl Default for Config {
@@ -36,6 +89,10 @@ impl Default for Config {
             mail: MailConfig::default(),
             steward: StewardConfig::default(),
             updates: UpdatePolicy::default(),
+            tls: TlsConfig::default(),
+            backup: BackupConfig::default(),
+            steward_socket: "/run/juggernaught/steward.sock".into(),
+            steward_dir: "/var/lib/juggernaught-steward".into(),
         }
     }
 }
@@ -54,6 +111,10 @@ impl Config {
             tools_dir: base.join("tools"),
             listen_http: "127.0.0.1:3700".into(),
             dev: true,
+            tls: TlsConfig { mode: TlsMode::Proxy, staging: true },
+            backup: BackupConfig { dir: base.join("backups"), recovery_public_key: base.join("keys").join("recovery.pub.json"), ..BackupConfig::default() },
+            steward_socket: base.join("steward.sock"),
+            steward_dir: base.join("steward"),
             ..Self::default()
         }
     }
@@ -65,6 +126,27 @@ impl Config {
 
     pub fn db_path(&self) -> PathBuf {
         self.data_dir.join("juggernaught.db")
+    }
+
+    /// Published public site (atomic symlink to the live deploy).
+    pub fn site_dir(&self) -> PathBuf {
+        self.data_dir.join("site").join("current")
+    }
+
+    pub fn assets_dir(&self) -> PathBuf {
+        self.data_dir.join("assets")
+    }
+
+    pub fn acme_cache(&self) -> PathBuf {
+        self.data_dir.join("acme")
+    }
+
+    /// Host names this box answers for: apex, www, admin.
+    pub fn hostnames(&self) -> Vec<String> {
+        match &self.domain {
+            Some(d) => vec![d.clone(), format!("www.{d}"), format!("admin.{d}")],
+            None => vec![],
+        }
     }
 }
 

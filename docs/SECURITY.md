@@ -82,7 +82,19 @@ sent to the model).
 - bubblewrap for every external tool.
 - Kernel: `kernel.unprivileged_bpf_disabled=1`, `net.ipv4.tcp_syncookies=1`, rp_filter.
 
-## 6. Known gaps (honest list)
+## 6. Backups
+
+- Nightly (`juggernaught-backup.timer`): online SQLite snapshot + assets + site + config, streamed through
+  AES-256-GCM (64 KiB STREAM chunks) — never loaded into memory.
+- The data key is wrapped to the box (routine restore tests) **and** to the owner's offline recovery key
+  (ML-KEM-768 + X25519). The box KEKs are escrowed the same way, so a restore on a new machine can read
+  every field-encrypted value. The owner's recovery key never lives on the server.
+- Every backup is signed (ML-DSA-65 over header ‖ body hash); tampering, truncation, path traversal and
+  foreign signers are rejected.
+- Weekly restore test (`juggernaught-restore-test.timer`) decrypts the newest backup, re-hashes every file
+  and runs `PRAGMA integrity_check`. Optional off-box copy via `rclone`.
+
+## 7. Known gaps (honest list)
 
 - Passkey registration/sign-in is implemented end to end but has only been exercised up to the
   WebAuthn options; a real-authenticator test (phone + laptop) is still owed.
@@ -90,6 +102,8 @@ sent to the model).
   `juggernaught setup-url` (written 0600 to `keys_dir/setup-token`, deleted after setup). Dev mode skips it.
 - Sign-in limits: 10 failures per IP and per account per 15 minutes; failures also feed the steward correlator.
 - The raw-HTML sanitizer is a conservative stripper; phase 4 replaces it with an allow-list parser.
-- Steward runs in-process in phase 0 (honeytokens + correlator); the separate daemon,
-  nftables writes and socket arrive in phase 2.
+- Let's Encrypt issuance (TLS-ALPN-01) has not yet been exercised on a real public VPS.
+- Unauthenticated requests for unknown admin paths redirect to sign-in rather than 404, so random-path
+  scanning of the admin host scores lower than on the public host.
+- Backups hold files in one archive; very large media libraries will want incremental backups (phase 6).
 - webauthn-rs links OpenSSL; Linux installs need `libssl3`. Track a pure-Rust/aws-lc option.

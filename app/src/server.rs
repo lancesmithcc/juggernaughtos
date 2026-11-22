@@ -49,6 +49,7 @@ pub struct AppState {
     /// One-time token required to run the setup wizard on a production box.
     pub setup_token: Arc<Mutex<Option<String>>>,
     pub mailer: Option<Arc<Mailer>>,
+    pub steward: jugg_steward::client::StewardClient,
 }
 
 impl FromRef<AppState> for LeptosOptions {
@@ -126,6 +127,7 @@ impl AppState {
 
         tracing::info!(provider = %provider.label(), tools = registry.specs().len(), rp_id, "juggernaught state ready");
         let correlator = Correlator::new(cfg.steward.clone(), vec!["127.0.0.1".into(), "::1".into()]);
+        let cfg_socket = cfg.steward_socket.clone();
         Ok(Self {
             leptos_options,
             cfg: Arc::new(cfg),
@@ -144,6 +146,7 @@ impl AppState {
             owner_exists: Arc::new(AtomicBool::new(owners > 0)),
             setup_token: Arc::new(Mutex::new(setup_token)),
             mailer,
+            steward: jugg_steward::client::StewardClient::spawn(cfg_socket),
         })
     }
 
@@ -164,9 +167,11 @@ impl AppState {
                 l.fail(&format!("acct:{a}"), now);
             }
         }
+        let ev = SecEvent::new("auth", kind, Severity::Low, 0.3, ip, json!({}));
         if let Ok(mut c) = self.correlator.lock() {
-            c.ingest(&SecEvent::new("auth", kind, Severity::Low, 0.3, ip, json!({})));
+            c.ingest(&ev);
         }
+        self.steward.send(ev);
     }
 
     pub fn sign_in_blocked(&self, ip: &str, account: Option<&str>) -> bool {
@@ -330,6 +335,7 @@ pub async fn security_layer(State(st): State<AppState>, ConnectInfo(addr): Conne
     if let Some(ev) = jugg_steward::honeytokens::classify(&path, &ip) {
         let actions = st.correlator.lock().map(|mut c| c.ingest(&ev)).unwrap_or_default();
         tracing::warn!(%ip, %path, ?actions, "honeytoken hit");
+        st.steward.send(ev);
         return (StatusCode::NOT_FOUND, "Not found").into_response();
     }
 
@@ -338,9 +344,11 @@ pub async fn security_layer(State(st): State<AppState>, ConnectInfo(addr): Conne
     let mut res = next.run(req).await;
 
     if res.status() == StatusCode::NOT_FOUND {
+        let ev = jugg_steward::honeytokens::not_found(&path, &ip);
         if let Ok(mut c) = st.correlator.lock() {
-            c.ingest(&jugg_steward::honeytokens::not_found(&path, &ip));
+            c.ingest(&ev);
         }
+        st.steward.send(ev);
     }
 
     let h = res.headers_mut();
@@ -361,8 +369,10 @@ pub async fn security_layer(State(st): State<AppState>, ConnectInfo(addr): Conne
         "default-src 'none'; script-src 'self' 'nonce-{nonce}' 'wasm-unsafe-eval'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data: blob:; \
          font-src 'self'; connect-src {connect}; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
     );
-    if let Ok(v) = HeaderValue::from_str(&csp) {
-        h.insert(header::CONTENT_SECURITY_POLICY, v);
+    if !h.contains_key(header::CONTENT_SECURITY_POLICY) {
+        if let Ok(v) = HeaderValue::from_str(&csp) {
+            h.insert(header::CONTENT_SECURITY_POLICY, v);
+        }
     }
     h.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
     res
@@ -817,6 +827,7 @@ fn html_escape(s: &str) -> String {
 
 pub async fn security_view(st: &AppState) -> crate::api::SecurityView {
     let ram = total_ram_mb();
+    let steward = st.steward.status().await;
     let mut sessions: Vec<(String, String, i64)> =
         sqlx::query_as("SELECT COALESCE(device_label,'Unknown device'), method, last_seen_at FROM sessions WHERE revoked_at IS NULL AND expires_at > ? ORDER BY last_seen_at DESC LIMIT 10")
             .bind(jugg_core::now_unix())
@@ -825,11 +836,10 @@ pub async fn security_view(st: &AppState) -> crate::api::SecurityView {
             .unwrap_or_default();
     sessions.truncate(10);
     crate::api::SecurityView {
-        posture: if st.cfg.dev {
-            "Development mode: firewall, bans and TLS are simulated on this machine. Honeytokens, sign-in limits and the correlator are live.".into()
-        } else {
-            "All quiet. Honeytokens armed, firewall closed except web traffic, updates and backups on schedule.".into()
-        },
+        posture: posture(st, steward.as_ref()),
+        checks: steward.as_ref().map(|s| s.checks.iter().map(|c| (c.name.clone(), c.status.clone(), c.detail.clone())).collect()).unwrap_or_default(),
+        incidents: steward.as_ref().map(|s| s.open_incidents.iter().map(|i| (i.subject.clone(), i.score)).collect()).unwrap_or_default(),
+        bans: steward.as_ref().map(|s| s.active_bans).unwrap_or(0),
         sensors: jugg_steward::sensor_plan(ram).into_iter().map(str::to_string).collect(),
         tasks: jugg_steward::maintenance::TASKS.iter().map(|t| (t.name.to_string(), t.schedule.to_string(), t.what.to_string())).collect(),
         crypto: vec![
@@ -840,6 +850,23 @@ pub async fn security_view(st: &AppState) -> crate::api::SecurityView {
             ("Sign-in".into(), "Passkeys, authenticator app, email links. No passwords stored, anywhere.".into()),
         ],
         sessions: sessions.into_iter().map(|(d, m, at)| (d, m.replace('_', " "), at)).collect(),
+    }
+}
+
+fn posture(st: &AppState, s: Option<&jugg_steward::daemon::Status>) -> String {
+    match s {
+        None if st.cfg.dev => "Development mode: the Steward daemon isn't running (start it with `juggernaught steward`). Honeytokens, sign-in limits and the in-app correlator are live.".into(),
+        None => "The Steward isn't responding. It restarts automatically; if this persists, run `juggernaught doctor`.".into(),
+        Some(s) => {
+            let failing = s.checks.iter().filter(|c| c.status == "fail").count();
+            let warns = s.checks.iter().filter(|c| c.status == "warn").count();
+            let fw = if s.firewall == "nftables" { "Firewall enforcing" } else { "Firewall simulated (development)" };
+            match (failing, s.open_incidents.len(), warns) {
+                (0, 0, 0) => format!("All quiet. {fw}; {} security events in the last day, {} addresses banned.", s.events_24h, s.active_bans),
+                (0, 0, w) => format!("Running well, {w} thing(s) to keep an eye on. {fw}."),
+                (f, i, _) => format!("Needs attention: {f} failing check(s), {i} open incident(s). {fw}."),
+            }
+        }
     }
 }
 

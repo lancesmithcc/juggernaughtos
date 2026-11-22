@@ -53,6 +53,22 @@ pub async fn connect(path: &Path) -> Result<SqlitePool> {
     Ok(pool)
 }
 
+/// The steward's own database (separate file, separate OS user).
+pub async fn connect_steward(path: &Path) -> Result<SqlitePool> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| DbError::Other(e.to_string()))?;
+    }
+    let pool = SqlitePoolOptions::new().max_connections(4).connect_with(options(&format!("sqlite://{}", path.display()))?).await?;
+    STEWARD_MIGRATOR.run(&pool).await?;
+    Ok(pool)
+}
+
+pub async fn connect_steward_memory() -> Result<SqlitePool> {
+    let pool = SqlitePoolOptions::new().max_connections(1).connect_with(options("sqlite::memory:")?).await?;
+    STEWARD_MIGRATOR.run(&pool).await?;
+    Ok(pool)
+}
+
 /// In-memory database for tests.
 pub async fn connect_memory() -> Result<SqlitePool> {
     let pool = SqlitePoolOptions::new().max_connections(1).connect_with(options("sqlite::memory:")?).await?;

@@ -91,6 +91,19 @@ pub fn SecurityPanel() -> impl IntoView {
                 {move || Suspend::new(async move {
                     sec.await.map(|s| view! {
                         <div class="posture"><span class="pulse" aria-hidden="true"></span><p>{s.posture}</p></div>
+                        {(!s.checks.is_empty()).then(|| view! {
+                            <h2 class="section-h">"Health checks"</h2>
+                            <ul class="rules">{s.checks.into_iter().map(|(name, status, detail)| view! {
+                                <li class="rule"><code>{name}</code><span class=format!("badge check-{status}")>{status.clone()}</span><p>{detail}</p></li>
+                            }).collect_view()}</ul>
+                        })}
+                        {(!s.incidents.is_empty()).then(|| view! {
+                            <h2 class="section-h">"Open incidents"</h2>
+                            <ul class="rules">{s.incidents.into_iter().map(|(subject, score)| view! {
+                                <li class="rule"><code>{subject}</code><span class="badge check-fail">{format!("score {score:.2}")}</span></li>
+                            }).collect_view()}</ul>
+                        })}
+                        {(s.bans > 0).then(|| view! { <p class="hint">{format!("{} address(es) currently banned at the firewall.", s.bans)}</p> })}
                         <h2 class="section-h">"Encryption"</h2>
                         <dl class="kv">{s.crypto.into_iter().map(|(k, v)| view! { <dt>{k}</dt><dd>{v}</dd> }).collect_view()}</dl>
                         <h2 class="section-h">"Signed-in devices"</h2>

@@ -13,7 +13,7 @@ use aws_lc_rs::hkdf::{Salt, HKDF_SHA256};
 use aws_lc_rs::kem::{Ciphertext, DecapsulationKey, EncapsulationKey, ML_KEM_768};
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct HybridPublicKey {
     #[serde(with = "b64")]
     pub mlkem768: Vec<u8>,
@@ -26,7 +26,7 @@ pub struct HybridSecretKey {
     x25519: PrivateKey,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct HybridWrapped {
     #[serde(with = "b64")]
     pub mlkem_ct: Vec<u8>,

@@ -16,7 +16,9 @@
 //! CAP_NET_ADMIN, owns its own SQLite file, and talks to the app over a Unix
 //! socket, so a compromised web process cannot erase security history.
 
+pub mod client;
 pub mod correlator;
+pub mod daemon;
 pub mod firewall;
 pub mod fim;
 pub mod honeytokens;

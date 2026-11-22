@@ -1,0 +1,9 @@
+// The Steward may restart the app (self-healing watchdog) and nothing else.
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.freedesktop.systemd1.manage-units" &&
+        action.lookup("unit") == "juggernaught.service" &&
+        action.lookup("verb") == "restart" &&
+        subject.user == "jugg-steward") {
+        return polkit.Result.YES;
+    }
+});
