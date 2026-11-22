@@ -10,7 +10,7 @@ docker run --rm --cap-add NET_ADMIN -v "$PWD/dist":/dist:ro -v "$PWD/install.sh"
   ok()   { printf "\033[32mPASS\033[0m %s\n" "$*"; }
   fail() { printf "\033[31mFAIL\033[0m %s\n" "$*"; exit 1; }
   apt-get update -qq && apt-get install -y -qq --no-install-recommends curl ca-certificates iproute2 util-linux >/dev/null
-  bash /install.sh --tls proxy --tarball /dist/'"$(basename "$TARBALL")"' --no-systemd --no-ssh-hardening --yes
+  JUGG_SKIP_TOOLS=1 bash /install.sh --tls proxy --tarball /dist/'"$(basename "$TARBALL")"' --no-systemd --no-ssh-hardening --yes
   C=/etc/juggernaught/juggernaught.toml
   sed -i "s/^listen_http = .*/listen_http = \"0.0.0.0:8080\"/" $C
   id jugg >/dev/null && id jugg-steward >/dev/null && ok "service users created" || fail "service users created"
@@ -44,5 +44,8 @@ docker run --rm --cap-add NET_ADMIN -v "$PWD/dist":/dist:ro -v "$PWD/install.sh"
 
   as_jugg /usr/local/bin/juggernaught backup create >/tmp/backup.txt 2>&1 && ok "backup created" || { cat /tmp/backup.txt; fail "backup"; }
   as_jugg /usr/local/bin/juggernaught backup test > /tmp/rt.txt 2>&1; grep -q "restores cleanly" /tmp/rt.txt && ok "restore test passes" || fail "restore test passes"
+  JUGG_CONFIG=$C /usr/local/bin/juggernaught tools install pdfcraft impeccable > /tmp/tools.txt 2>&1 && ok "pinned tools downloaded, hash-verified, smoke-tested" || { cat /tmp/tools.txt; fail "tool install"; }
+  JUGG_CONFIG=$C /usr/local/bin/juggernaught tools verify > /tmp/verify.txt 2>&1 && ok "tool canaries pass" || { cat /tmp/verify.txt; fail "tool verify"; }
+  JUGG_CONFIG=$C /usr/local/bin/juggernaught tools status > /tmp/status.txt; grep -q "pdfcraft .* ready" /tmp/status.txt && ok "tools status reports pdfcraft ready" || { cat /tmp/status.txt; fail "tools status"; }
   echo; echo "ALL SMOKE TESTS PASSED"
 '

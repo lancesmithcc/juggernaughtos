@@ -1,0 +1,16 @@
+[package]
+name = "jugg-print"
+description = "Brand-driven print and email assets: business cards (print-ready PDF), email signatures, SVG→PDF/PNG"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+jugg-brand.workspace = true
+svg2pdf = "0.13"
+pdf-writer = "0.12"
+resvg = { version = "0.45", default-features = false, features = ["text"] }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+base64.workspace = true

@@ -22,6 +22,32 @@ pub struct ToolActivity {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AssetCard {
+    pub id: String,
+    pub kind: String,
+    pub title: String,
+    /// draft | review | rejected | final
+    pub status: String,
+    pub mime: String,
+    pub url: String,
+    pub preview_url: Option<String>,
+    /// Brand gate summary + findings.
+    pub summary: String,
+    pub findings: Vec<String>,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct JobView {
+    pub id: String,
+    pub tool: String,
+    pub status: String,
+    pub progress: f64,
+    pub error: Option<String>,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TurnTicket {
     pub conversation_id: String,
     pub turn_id: String,
@@ -36,6 +62,7 @@ pub enum StreamEvent {
     ToolFinished { name: String, summary: String, is_error: bool },
     ApprovalRequired { tool: String, summary: String },
     Usage {},
+    Assets { items: Vec<AssetCard> },
     Done,
     Error { message: String },
 }
@@ -115,6 +142,7 @@ pub struct ToolView {
     pub name: String,
     pub description: String,
     pub risk: String,
+    pub available: bool,
 }
 
 // ---------------------------------------------------------------- server helpers
@@ -357,5 +385,35 @@ pub async fn get_standards() -> Result<StandardsView, ServerFnError> {
 pub async fn get_tools() -> Result<Vec<ToolView>, ServerFnError> {
     let st = ctx::state()?;
     ctx::user(&st).await?;
-    Ok(st.registry.specs().into_iter().map(|s| ToolView { name: s.name, description: s.description, risk: format!("{:?}", s.risk).to_lowercase() }).collect())
+    let lock = std::fs::read_to_string(st.cfg.tools_dir.join("tools.lock.toml")).ok().and_then(|s| jugg_tools::lock::ToolsLock::parse(&s).ok()).unwrap_or_else(jugg_tools::lock::ToolsLock::embedded);
+    let installed: std::collections::HashSet<String> = jugg_tools::install::status(&lock, &st.cfg.tools_dir).into_iter().filter(|t| t.installed).map(|t| t.name).collect();
+    let mut out: Vec<ToolView> = st.registry.specs().into_iter().map(|s| ToolView { name: s.name, description: s.description, risk: format!("{:?}", s.risk).to_lowercase(), available: true }).collect();
+    // Pinned tools that aren't installed yet, so the owner knows what's missing.
+    for t in jugg_tools::install::status(&lock, &st.cfg.tools_dir).into_iter().filter(|t| !t.installed && !installed.contains(&t.name)) {
+        out.push(ToolView { name: t.name, description: t.note, risk: "create".into(), available: false });
+    }
+    Ok(out)
+}
+
+// ---------------------------------------------------------------- assets
+
+#[server]
+pub async fn list_assets(kind: Option<String>) -> Result<Vec<AssetCard>, ServerFnError> {
+    let st = ctx::state()?;
+    ctx::user(&st).await?;
+    Ok(crate::assets::list(&st, kind).await)
+}
+
+#[server]
+pub async fn decide_asset(id: String, approve: bool, reason: Option<String>) -> Result<AssetCard, ServerFnError> {
+    let st = ctx::state()?;
+    let user = ctx::user(&st).await?;
+    crate::assets::decide(&st, &user, &id, approve, reason).await.map_err(ServerFnError::new)
+}
+
+#[server]
+pub async fn list_jobs() -> Result<Vec<JobView>, ServerFnError> {
+    let st = ctx::state()?;
+    ctx::user(&st).await?;
+    Ok(crate::assets::jobs(&st).await)
 }

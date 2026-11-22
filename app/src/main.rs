@@ -48,6 +48,11 @@ async fn main() {
             #[command(subcommand)]
             cmd: BackupCmd,
         },
+        /// Install, list or verify the pinned creative tools.
+        Tools {
+            #[command(subcommand)]
+            cmd: ToolsCmd,
+        },
         /// Print the nftables ruleset for this box.
         Firewall {
             /// Allow SSH only from these addresses/ranges (e.g. 100.64.0.0/10 for Tailscale).
@@ -56,6 +61,20 @@ async fn main() {
             #[arg(long = "ssh-port", default_value_t = 22)]
             ssh_port: u16,
         },
+    }
+
+    #[derive(Subcommand)]
+    enum ToolsCmd {
+        /// Show what is installed.
+        Status,
+        /// Install tools (all of them with --all).
+        Install {
+            names: Vec<String>,
+            #[arg(long)]
+            all: bool,
+        },
+        /// Re-run every installed tool's smoke test.
+        Verify,
     }
 
     #[derive(Subcommand)]
@@ -97,7 +116,7 @@ async fn main() {
         std::env::set_var("JUGG_DEV_ROOT", cfg.data_dir.parent().unwrap_or(&cfg.data_dir));
     }
 
-    let quiet = matches!(cli.cmd, Some(Cmd::Mcp { .. }) | Some(Cmd::SetupUrl) | Some(Cmd::Doctor) | Some(Cmd::Connect { .. }) | Some(Cmd::Firewall { .. }) | Some(Cmd::Steward { status: true }));
+    let quiet = matches!(cli.cmd, Some(Cmd::Mcp { .. }) | Some(Cmd::SetupUrl) | Some(Cmd::Doctor) | Some(Cmd::Connect { .. }) | Some(Cmd::Firewall { .. }) | Some(Cmd::Steward { status: true }) | Some(Cmd::Tools { .. }));
     let filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| if quiet { "warn,sqlx=warn".into() } else { "info,sqlx=warn".into() });
     tracing_subscriber::fmt().with_env_filter(filter).with_writer(std::io::stderr).init();
 
@@ -124,6 +143,58 @@ async fn main() {
                 }
             }
             print!("{}", jugg_steward::firewall::base_ruleset(ssh_allow, *ssh_port));
+            return;
+        }
+        Some(Cmd::Tools { cmd }) => {
+            let lock = std::fs::read_to_string(cfg.tools_dir.join("tools.lock.toml")).ok().and_then(|s| jugg_tools::lock::ToolsLock::parse(&s).ok()).unwrap_or_else(jugg_tools::lock::ToolsLock::embedded);
+            match cmd {
+                ToolsCmd::Status => {
+                    for t in jugg_tools::install::status(&lock, &cfg.tools_dir) {
+                        println!("{:<12} {:<20} {}", t.name, t.version, t.note);
+                    }
+                }
+                ToolsCmd::Install { names, all } => {
+                    let wanted: Vec<String> = if *all { lock.tool.iter().filter(|(_, t)| t.install != "unavailable").map(|(n, _)| n.clone()).collect() } else { names.clone() };
+                    if wanted.is_empty() {
+                        eprintln!("Name the tools to install, or use --all.");
+                        std::process::exit(2);
+                    }
+                    let mut failed = 0;
+                    for n in wanted {
+                        match lock.tool.get(&n) {
+                            None => {
+                                eprintln!("{n}: not in tools.lock.toml");
+                                failed += 1;
+                            }
+                            Some(t) => match jugg_tools::install::install(&cfg.tools_dir, &n, t) {
+                                Ok(m) => println!("✓ {m}"),
+                                Err(e) => {
+                                    eprintln!("✗ {n}: {e}");
+                                    failed += 1;
+                                }
+                            },
+                        }
+                    }
+                    if failed > 0 {
+                        std::process::exit(1);
+                    }
+                }
+                ToolsCmd::Verify => {
+                    let mut bad = 0;
+                    for (n, r) in jugg_tools::install::verify(&lock, &cfg.tools_dir) {
+                        match r {
+                            Ok(line) => println!("✓ {n}: {line}"),
+                            Err(e) => {
+                                bad += 1;
+                                println!("✗ {n}: {e}");
+                            }
+                        }
+                    }
+                    if bad > 0 {
+                        std::process::exit(1);
+                    }
+                }
+            }
             return;
         }
         Some(Cmd::Steward { status: true }) => {
@@ -203,7 +274,7 @@ async fn main() {
     let state = AppState::init(cfg, leptos_options.clone()).await.unwrap_or_else(|e| panic!("startup: {e}"));
 
     match cli.cmd.unwrap_or(Cmd::Serve) {
-        Cmd::SetupUrl | Cmd::Firewall { .. } | Cmd::Steward { .. } => unreachable!(),
+        Cmd::SetupUrl | Cmd::Firewall { .. } | Cmd::Steward { .. } | Cmd::Tools { .. } => unreachable!(),
         Cmd::Backup { cmd } => match cmd {
             BackupCmd::Create => {
                 let tmp = state.cfg.data_dir.join(".backup-db.sqlite");
@@ -334,6 +405,7 @@ async fn main() {
             let addr = leptos_options.site_addr;
             let st_cfg = state.cfg.clone();
             let routes = generate_route_list(App);
+            tokio::spawn(juggernaught::assets::worker(state.clone()));
             let app = Router::new()
                 .route("/brand.css", get(brand_css))
                 .route("/auth/magic/{token}", get(magic_redeem))
@@ -343,6 +415,8 @@ async fn main() {
                 .route("/auth/passkey/login/finish", post(passkey_login_finish))
                 .route("/auth/logout", post(logout))
                 .route("/api/chat/stream/{turn_id}", get(chat_stream))
+                .route("/files/asset/{id}", get(juggernaught::assets::serve))
+                .route("/files/asset/{id}/{variant}", get(juggernaught::assets::serve))
                 .leptos_routes(&state, routes, {
                     let opts = leptos_options.clone();
                     move || shell(opts.clone())

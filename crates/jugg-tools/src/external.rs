@@ -57,11 +57,27 @@ fn rel(v: &Value, k: &str, ctx: &ToolContext) -> Result<String, ToolError> {
     Ok(p)
 }
 
+/// Which lock entry backs a registry tool (None = built in, always available).
+pub fn lock_name(tool: &str) -> Option<&'static str> {
+    Some(match tool {
+        "speak" => "kokoros",
+        "pdf_combine" => "pdfcraft",
+        "photo_edit" => "photocraft",
+        "vector_export" => "vectorcraft",
+        "render_video" => "hyperframes",
+        "design_audit" => "impeccable",
+        _ => return None,
+    })
+}
+
 pub fn register_all(r: &mut Registry, lock: &ToolsLock, tools_dir: &Path) {
     let root = |name: &str, t: &LockedTool| tools_dir.join(name).join(&t.version);
     let mut add = |name: &str, spec: ToolSpec, build: ArgBuilder| {
+        // Only offer the agent tools that are actually installed on this box.
         if let Some(t) = lock.tool.get(name) {
-            r.register(CliTool { spec, locked: t.clone(), root: root(name, t), build });
+            if !t.bin.is_empty() && root(name, t).join(&t.bin).exists() {
+                r.register(CliTool { spec, locked: t.clone(), root: root(name, t), build });
+            }
         }
     };
 
@@ -74,6 +90,7 @@ pub fn register_all(r: &mut Registry, lock: &ToolsLock, tools_dir: &Path) {
                 "text":{"type":"string"},"output":{"type":"string","description":"wav path in job dir"},
                 "voice":{"type":"string","description":"e.g. af_heart, am_michael"}}}),
             risk: Risk::Create,
+            long_running: false,
         },
         |a, ctx| {
             let out = rel(a, "output", ctx)?;
@@ -93,6 +110,7 @@ pub fn register_all(r: &mut Registry, lock: &ToolsLock, tools_dir: &Path) {
             input_schema: json!({"type":"object","required":["inputs","output"],"properties":{
                 "inputs":{"type":"array","items":{"type":"string"}},"output":{"type":"string"}}}),
             risk: Risk::Create,
+            long_running: false,
         },
         |a, ctx| {
             let out = rel(a, "output", ctx)?;
@@ -116,6 +134,7 @@ pub fn register_all(r: &mut Registry, lock: &ToolsLock, tools_dir: &Path) {
                 "input":{"type":"string"},"output":{"type":"string"},
                 "commands":{"type":"array","items":{"type":"object","required":["cmd"],"properties":{"cmd":{"type":"string"},"params":{"type":"object"}}}}}}),
             risk: Risk::Create,
+            long_running: false,
         },
         |a, ctx| {
             let out = rel(a, "output", ctx)?;
@@ -138,6 +157,7 @@ pub fn register_all(r: &mut Registry, lock: &ToolsLock, tools_dir: &Path) {
             description: "Render a VectorCraft document to PDF/SVG/PNG (business cards, posters, print layouts).".into(),
             input_schema: json!({"type":"object","required":["input","output"],"properties":{"input":{"type":"string"},"output":{"type":"string"}}}),
             risk: Risk::Create,
+            long_running: false,
         },
         |a, ctx| {
             let out = rel(a, "output", ctx)?;
@@ -152,6 +172,7 @@ pub fn register_all(r: &mut Registry, lock: &ToolsLock, tools_dir: &Path) {
             description: "Render a HyperFrames HTML composition to MP4 (social clips, explainers, title cards). Long-running: runs as a background job.".into(),
             input_schema: json!({"type":"object","required":["project","output"],"properties":{"project":{"type":"string"},"output":{"type":"string"}}}),
             risk: Risk::Create,
+            long_running: true,
         },
         |a, ctx| {
             let out = rel(a, "output", ctx)?;
@@ -166,6 +187,7 @@ pub fn register_all(r: &mut Registry, lock: &ToolsLock, tools_dir: &Path) {
             description: "Audit an HTML page or asset for design quality and AI-slop patterns (impeccable). Part of the brand gate.".into(),
             input_schema: json!({"type":"object","required":["input"],"properties":{"input":{"type":"string"}}}),
             risk: Risk::Read,
+            long_running: false,
         },
         |a, ctx| Ok((vec!["audit".into(), rel(a, "input", ctx)?, "--json".into()], vec![])),
     );

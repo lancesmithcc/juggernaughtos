@@ -13,6 +13,7 @@ members = [
     "crates/jugg-steward",
     "crates/jugg-updater",
     "crates/jugg-backup",
+    "crates/jugg-print",
     "crates/vectorverter-core",
 ]
 
@@ -36,6 +37,7 @@ jugg-web = { path = "crates/jugg-web" }
 jugg-steward = { path = "crates/jugg-steward" }
 jugg-updater = { path = "crates/jugg-updater" }
 jugg-backup = { path = "crates/jugg-backup" }
+jugg-print = { path = "crates/jugg-print" }
 vectorverter-core = { path = "crates/vectorverter-core" }
 
 # web / runtime

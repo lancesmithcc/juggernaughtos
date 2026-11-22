@@ -55,6 +55,8 @@ pub enum AgentEvent {
     ToolFinished { name: String, summary: String, is_error: bool },
     ApprovalRequired { tool: String, summary: String },
     Usage { input_tokens: u64, output_tokens: u64, model: String },
+    /// New assets registered from this turn's work (asset cards for the UI).
+    Assets { items: serde_json::Value },
     Done,
     Error { message: String },
 }

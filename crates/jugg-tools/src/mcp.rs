@@ -91,16 +91,23 @@ mod tests {
         let reg = Registry::standard(&crate::lock::ToolsLock::embedded(), dir.path());
         let list = handle(&reg, &ctx(dir.path()), &json!({"jsonrpc":"2.0","id":1,"method":"tools/list"})).await.unwrap();
         let names: Vec<&str> = list["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
-        assert!(names.contains(&"vectorize") && names.contains(&"speak") && names.contains(&"brand_guide"), "{names:?}");
+        assert!(names.contains(&"vectorize") && names.contains(&"business_card") && names.contains(&"brand_guide"), "{names:?}");
+        assert!(!names.contains(&"speak"), "tools that aren't installed are not offered");
 
         let call = handle(&reg, &ctx(dir.path()), &json!({"jsonrpc":"2.0","id":2,"method":"tools/call",
             "params":{"name":"lint_css","arguments":{"css":"a{color:#ff00ff}"}}})).await.unwrap();
         assert_eq!(call["result"]["structuredContent"]["data"][0]["rule"], "brand.color.off_palette");
 
-        // External tool not installed in the temp tools dir → clean error result.
+        // Unknown / uninstalled tool → clean error result, not a protocol failure.
         let missing = handle(&reg, &ctx(dir.path()), &json!({"jsonrpc":"2.0","id":3,"method":"tools/call",
             "params":{"name":"speak","arguments":{"text":"hi","output":"a.wav"}}})).await.unwrap();
         assert_eq!(missing["result"]["isError"], true);
+
+        // Business card through the bridge: PDF + previews + sidecar written.
+        let card = handle(&reg, &ctx(dir.path()), &json!({"jsonrpc":"2.0","id":4,"method":"tools/call",
+            "params":{"name":"business_card","arguments":{"name":"Ada Baker","email":"ada@harbour.test"}}})).await.unwrap();
+        assert_eq!(card["result"]["structuredContent"]["files"][0], "business-card-ada-baker.pdf");
+        assert!(dir.path().join("business-card-ada-baker.pdf.meta.json").exists());
     }
 
     #[tokio::test]

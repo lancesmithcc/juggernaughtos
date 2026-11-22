@@ -6,6 +6,7 @@
 //! * [`BrandStandards::image_prompt_preamble`] constrains image generation.
 //! * [`lint_css`] is the token gate: raw colours / fonts outside the brand fail.
 
+pub mod gate;
 mod lint;
 
 pub use lint::{contrast_ratio, lint_css, Finding, Severity};

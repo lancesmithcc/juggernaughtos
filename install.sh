@@ -158,6 +158,15 @@ if [[ ! -f "$CONF" ]]; then
   say "Wrote $CONF"
 fi
 
+# ------------------------------------------------------------------ creative tools (pinned + hash-verified)
+install -d -m 0755 -o root -g root "$PREFIX/tools"
+install -m 0644 "$PREFIX/current/tools.lock.toml" "$PREFIX/tools/tools.lock.toml"
+if [[ "${JUGG_SKIP_TOOLS:-0}" != 1 ]]; then
+  say "Installing creative tools (downloads a few hundred MB; video tools need Node 20+)"
+  JUGG_CONFIG="$CONF" /usr/local/bin/juggernaught tools install --all 2>&1 | sed 's/^/    /' \
+    || warn "some tools could not be installed; run 'sudo JUGG_CONFIG=$CONF juggernaught tools status' later"
+fi
+
 # ------------------------------------------------------------------ firewall
 if [[ $FIREWALL -eq 1 ]]; then
   SSH_PORT=$( { sshd -T 2>/dev/null || true; } | awk '/^port / {print $2; exit}'); SSH_PORT=${SSH_PORT:-22}

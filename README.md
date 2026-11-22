@@ -76,6 +76,24 @@ scripts/build-linux.sh
 scripts/smoke-linux.sh
 ```
 
+## Creative tools
+
+Pinned in [tools.lock.toml](tools.lock.toml) with a SHA-256 per CPU; anything that doesn't match is refused.
+The installer fetches them; manage them later with:
+
+```bash
+sudo juggernaught tools status
+```
+
+```bash
+sudo juggernaught tools install --all
+```
+
+Built in (always available): business cards (print-ready PDF), email signatures, logo vectorizing,
+brand guide, CSS brand check. PhotoCraft, VectorCraft, PdfCraft and impeccable install from their
+upstream releases; HyperFrames video needs Node 20+; Kokoro voice and open-design are not yet
+available as server binaries upstream.
+
 ## Hardware
 
 The LLM runs remotely (subscription or API), so no GPU is needed. What costs

@@ -1,4 +1,5 @@
 pub mod account;
+pub mod assets;
 pub mod chat;
 pub mod login;
 pub mod panels;

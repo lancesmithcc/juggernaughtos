@@ -15,21 +15,6 @@ fn Panel(title: &'static str, lede: &'static str, children: Children) -> impl In
 }
 
 #[component]
-pub fn AssetsPanel() -> impl IntoView {
-    let kinds = ["Logos", "Social", "Video", "Print", "Email signatures", "Icons & textures", "Documents"];
-    view! {
-        <Panel title="Assets" lede="Everything we've made, filed by kind. Drafts show a badge until they pass the brand check.">
-            <div class="filters">{kinds.iter().map(|k| view! { <button class="chip">{*k}</button> }).collect_view()}</div>
-            <div class="empty-state">
-                <div class="empty-art" aria-hidden="true"><i></i><i></i><i></i></div>
-                <h2>"Nothing here yet"</h2>
-                <p>"Ask for a logo, a launch post or a business card and it will land here."</p>
-            </div>
-        </Panel>
-    }
-}
-
-#[component]
 pub fn BrandPanel() -> impl IntoView {
     let brand = Resource::new(|| (), |_| get_brand());
     view! {
@@ -140,7 +125,9 @@ pub fn SettingsPanel() -> impl IntoView {
                 {move || Suspend::new(async move {
                     tools.await.map(|t| view! {
                         <ul class="rules">{t.into_iter().map(|x| view! {
-                            <li class="rule"><code>{x.name}</code><span class=format!("badge {}", x.risk)>{x.risk.clone()}</span><p>{x.description}</p></li>
+                            <li class="rule" class:unavailable=!x.available><code>{x.name}</code><span class=format!("badge {}", x.risk)>{x.risk.clone()}</span>
+                                {(!x.available).then(|| view! { <span class="badge" title="Install with: juggernaught tools install --all">"not installed"</span> })}
+                                <p>{x.description}</p></li>
                         }).collect_view()}</ul>
                     })
                 })}

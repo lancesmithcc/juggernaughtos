@@ -1,4 +1,5 @@
-use crate::api::{get_overview, start_turn, StreamEvent, ToolActivity};
+use crate::api::{get_overview, start_turn, AssetCard, StreamEvent, ToolActivity};
+use crate::pages::assets::AssetTile;
 use leptos::prelude::*;
 
 #[derive(Clone)]
@@ -9,11 +10,12 @@ struct Msg {
     tools: RwSignal<Vec<ToolActivity>>,
     live: RwSignal<Option<String>>,
     streaming: RwSignal<bool>,
+    assets: RwSignal<Vec<AssetCard>>,
 }
 
 impl Msg {
     fn new(id: usize, user: bool, text: String) -> Self {
-        Self { id, user, text: RwSignal::new(text), tools: RwSignal::new(vec![]), live: RwSignal::new(None), streaming: RwSignal::new(!user) }
+        Self { id, user, text: RwSignal::new(text), tools: RwSignal::new(vec![]), live: RwSignal::new(None), streaming: RwSignal::new(!user), assets: RwSignal::new(vec![]) }
     }
 }
 
@@ -59,6 +61,7 @@ pub fn ChatPage() -> impl IntoView {
                             reply.live.set(None);
                             busy.set(false);
                         }
+                        StreamEvent::Assets { items } => reply.assets.update(|a| a.extend(items)),
                         StreamEvent::Usage {} => {}
                     });
                 }
@@ -149,7 +152,7 @@ fn Message(msg: Msg) -> impl IntoView {
     if msg.user {
         return view! { <div class="msg user"><div class="bubble">{move || msg.text.get()}</div></div> }.into_any();
     }
-    let Msg { text, tools, live, streaming, .. } = msg;
+    let Msg { text, tools, live, streaming, assets, .. } = msg;
     let waiting = move || streaming.get() && text.with(|t| t.is_empty()) && tools.with(|t| t.is_empty());
     view! {
         <div class="msg assistant" class:streaming=move || streaming.get()>
@@ -165,6 +168,13 @@ fn Message(msg: Msg) -> impl IntoView {
                 {move || live.get().map(|l| view! { <p class="live">{l}</p> })}
                 <Show when=waiting fallback=move || view! { <div class="text md" inner_html=move || crate::markdown::render(&text.get())></div> }>
                     <span class="dots" aria-label="Working"><i></i><i></i><i></i></span>
+                </Show>
+                <Show when=move || !assets.with(|a| a.is_empty())>
+                    <div class="chat-assets">
+                        <For each=move || assets.get() key=|a| a.id.clone() let:card>
+                            <AssetTile card=card/>
+                        </For>
+                    </div>
                 </Show>
             </div>
         </div>

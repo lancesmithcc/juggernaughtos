@@ -33,6 +33,27 @@ pub struct LockedTool {
     pub timeout_secs: u64,
     #[serde(default = "default_mem")]
     pub memory_mb: u64,
+    /// Where the artifact comes from and its pinned hashes per CPU.
+    #[serde(default)]
+    pub dist: Option<Dist>,
+    /// Shown when a tool can't be installed on this platform.
+    #[serde(default)]
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Dist {
+    /// Release asset name; `{v}` = version without a leading `v`, `{arch}` =
+    /// aarch64|x86_64, `{arch_short}` = arm64|x64.
+    #[serde(default)]
+    pub asset: Option<String>,
+    #[serde(default)]
+    pub sha256_aarch64: Option<String>,
+    #[serde(default)]
+    pub sha256_x86_64: Option<String>,
+    /// npm package name (install = "npm").
+    #[serde(default)]
+    pub package: Option<String>,
 }
 
 fn default_timeout() -> u64 {
@@ -60,6 +81,14 @@ mod tests {
         let l = super::ToolsLock::embedded();
         for t in ["photocraft", "vectorcraft", "pdfcraft", "kokoros", "hyperframes", "open-design", "impeccable"] {
             assert!(l.tool.contains_key(t), "missing {t}");
+        }
+        for (name, t) in &l.tool {
+            if t.install.starts_with("github-") {
+                let d = t.dist.as_ref().unwrap_or_else(|| panic!("{name}: dist missing"));
+                for h in [&d.sha256_aarch64, &d.sha256_x86_64] {
+                    assert_eq!(h.as_deref().map(str::len), Some(64), "{name}: every downloadable tool is hash-pinned per CPU");
+                }
+            }
         }
     }
 }

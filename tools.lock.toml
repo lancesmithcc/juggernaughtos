@@ -1,66 +1,88 @@
-# Pinned external tools. Managed by `juggernaught update`; do not hand-edit in
-# production. Versions verified 2026-11-21. All licences permit redistribution.
+# Pinned external tools. `juggernaught tools install` downloads exactly these
+# artifacts and refuses anything whose SHA-256 differs from the pin.
+# Managed by the release pipeline / updater; verified 2026-11-22.
 
 [tool.photocraft]
 repo = "storytold/photocraft"
 version = "v0.23.1"
-install = "cargo"
+install = "github-tarball"
 bin = "bin/photocraft-cli"
 mcp = ["mcp"]
 license = "MIT OR Apache-2.0"
 timeout_secs = 600
 memory_mb = 4096
+[tool.photocraft.dist]
+asset = "photocraft-{v}-linux-{arch}.tar.gz"
+sha256_aarch64 = "fcc81c38ae62c72fa9f4fd1ec3d18396493ba261662792d6995cc35905ce71d2"
+sha256_x86_64 = "4383aef67a07cc370ad250a6ed60015205d3e6c463faf3ff4b0f67b8178ccfc8"
 
 [tool.vectorcraft]
 repo = "storytold/vectorcraft"
 version = "v0.24.1"
-install = "cargo"
+install = "github-tarball"
 bin = "bin/vectorcraft-cli"
 mcp = ["mcp"]
 license = "MIT OR Apache-2.0"
+[tool.vectorcraft.dist]
+asset = "vectorcraft-{v}-linux-{arch}.tar.gz"
+sha256_aarch64 = "4b9735489789d336c1ca4344689eb4a1d4a3f0b6e8db7f8c0659c24d10653455"
+sha256_x86_64 = "a090514252fde145495ac6fc65d6ff1311d698998e57ba434d5d0896c3d1fbfa"
 
 [tool.pdfcraft]
 repo = "storytold/pdfcraft"
 version = "v0.21.1"
-install = "cargo"
-bin = "bin/pdfcraft-cli"
+install = "github-tarball"
+bin = "pdfcraft-cli"
 license = "MIT OR Apache-2.0"
+[tool.pdfcraft.dist]
+asset = "pdfcraft-cli-{v}-linux-{arch}.tar.gz"
+sha256_aarch64 = "e41fc6d757eb6e0b4b6f6d9115a3efa530785c092fc9a5be914893416da6c9f3"
+sha256_x86_64 = "a97b2e789d214360424f19814bc66f3eaf6d04ef5e42e472b46f7b9ddceea5c8"
 
-[tool.kokoros]
-repo = "lucasjinreal/Kokoros"
-version = "main@2026-10-05"
-install = "cargo"
-bin = "bin/koko"
+[tool.impeccable]
+repo = "pbakaus/impeccable"
+version = "engine-v0.1.28"
+install = "github-binary"
+bin = "bin/impeccable"
 license = "Apache-2.0"
-memory_mb = 2048
+[tool.impeccable.dist]
+asset = "impeccable-linux-{arch_short}"
+sha256_aarch64 = "107112e1bf8067b3991eeb38ccafd2085278c8973f689d7feb2b94e879345387"
+sha256_x86_64 = "bf0524d3b44a199953d70ba10548ba48c5ab50d6ad260eeaa84ed8945c10a721"
 
 [tool.hyperframes]
 repo = "heygen-com/hyperframes"
-version = "v0.9.78"
+version = "0.9.81"
 install = "npm"
 bin = "node_modules/.bin/hyperframes"
 license = "Apache-2.0"
 timeout_secs = 1800
 memory_mb = 6144
+[tool.hyperframes.dist]
+package = "hyperframes"
 
 [tool.open-design]
 repo = "nexu-io/open-design"
 version = "open-design-v0.27.2"
-install = "npm"
-bin = "node_modules/.bin/open-design"
+install = "unavailable"
+bin = ""
 license = "Apache-2.0"
+note = "Desktop app only upstream; brand systems are exported as DESIGN.md (jugg-brand) instead."
 
-[tool.impeccable]
-repo = "pbakaus/impeccable"
-version = "engine-v0.1.28"
-install = "cargo"
-bin = "bin/impeccable"
+[tool.kokoros]
+repo = "lucasjinreal/Kokoros"
+version = "main@2026-10-05"
+install = "unavailable"
+bin = "bin/koko"
 license = "Apache-2.0"
+memory_mb = 2048
+note = "No upstream release binaries yet; built by the Juggernaught release pipeline in a later phase."
 
 [tool.google-fonts]
 repo = "google/fonts"
 version = "main@2026-11-21"
-install = "font-mirror"
+install = "unavailable"
 bin = ""
 license = "OFL-1.1 / Apache-2.0 / UFL (per family)"
 network = true
+note = "Font mirror sync lands with the website builder."

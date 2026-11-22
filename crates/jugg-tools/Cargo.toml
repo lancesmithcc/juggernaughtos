@@ -6,6 +6,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+jugg-print.workspace = true
 jugg-core.workspace = true
 jugg-brand.workspace = true
 vectorverter-core.workspace = true

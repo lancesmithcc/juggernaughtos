@@ -7,6 +7,8 @@ pub mod client;
 pub mod markdown;
 pub mod pages;
 #[cfg(feature = "ssr")]
+pub mod assets;
+#[cfg(feature = "ssr")]
 pub mod server;
 #[cfg(feature = "ssr")]
 pub mod web;

@@ -1,4 +1,4 @@
-use crate::pages::{chat::ChatPage, login::LoginPage, panels::*, setup::SetupPage};
+use crate::pages::{assets::AssetsPanel, chat::ChatPage, login::LoginPage, panels::*, setup::SetupPage};
 use leptos::prelude::*;
 use leptos_meta::{provide_meta_context, Link, Meta, MetaTags, Stylesheet, Title};
 use leptos_router::components::{Outlet, ParentRoute, Route, Router, Routes, A};

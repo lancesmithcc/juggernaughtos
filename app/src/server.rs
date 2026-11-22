@@ -107,7 +107,7 @@ impl AppState {
         let brand = brand.and_then(|j| serde_json::from_str(&j).ok()).unwrap_or_default();
         let lock_path = cfg.tools_dir.join("tools.lock.toml");
         let lock = std::fs::read_to_string(&lock_path).ok().and_then(|s| jugg_tools::lock::ToolsLock::parse(&s).ok()).unwrap_or_else(jugg_tools::lock::ToolsLock::embedded);
-        let registry = Registry::standard(&lock, &cfg.tools_dir);
+        let registry = Registry::standard(&lock, &cfg.tools_dir).with_job_sink(Arc::new(crate::assets::DbJobSink { pool: pool.clone() }));
         let provider = load_provider(&pool, &ring).await;
         let owners: i64 = sqlx::query_scalar("SELECT count(*) FROM users WHERE role='owner'").fetch_one(&pool).await.map_err(err)?;
         let (rp_id, origin) = (rp_id(&cfg), admin_origin(&cfg));
@@ -387,7 +387,7 @@ pub async fn auth_gate(State(st): State<AppState>, req: Request, next: Next) -> 
         return Redirect::to("/").into_response();
     }
     let public = matches!(path, "/login" | "/setup" | "/favicon.svg" | "/brand.css")
-        || ["/auth/", "/pkg/", "/fonts/", "/api/"].iter().any(|p| path.starts_with(p));
+        || ["/auth/", "/pkg/", "/fonts/", "/api/", "/files/"].iter().any(|p| path.starts_with(p));
     if public || session_user(&st, req.headers()).await.is_some() {
         return next.run(req).await;
     }
@@ -648,6 +648,10 @@ async fn run_turn(st: AppState, turn: Turn, out: tokio::sync::mpsc::Sender<Agent
         let msg = format!("\n\n_{e}_");
         reply.push_str(&msg);
         let _ = out.send(AgentEvent::TextDelta { text: msg }).await;
+    }
+    let assets = crate::assets::sweep(&st, &conv, &st.cfg.data_dir.join("jobs").join(&conv)).await;
+    if !assets.is_empty() {
+        let _ = out.send(AgentEvent::Assets { items: serde_json::to_value(&assets).unwrap_or_default() }).await;
     }
     let _ = store_message(&st, &conv, "assistant", &reply, Some(serde_json::Value::Array(tools).to_string()), &label).await;
     let _ = sqlx::query("UPDATE conversations SET updated_at = ? WHERE id = ?").bind(jugg_core::now_unix()).bind(&conv).execute(&st.pool).await;
