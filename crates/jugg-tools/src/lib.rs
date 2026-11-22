@@ -74,6 +74,10 @@ pub enum ToolError {
 #[async_trait]
 pub trait Tool: Send + Sync {
     fn spec(&self) -> ToolSpec;
+    /// One sentence the owner reads before approving a Publish/Destructive call.
+    fn approval_summary(&self, _args: &Value) -> String {
+        format!("Run {}", self.spec().name.replace('_', " "))
+    }
     async fn run(&self, args: Value, ctx: &ToolContext) -> Result<ToolOutput, ToolError>;
 }
 
@@ -84,10 +88,18 @@ pub trait JobSink: Send + Sync {
     async fn enqueue(&self, tool: &str, args: Value, ctx: &ToolContext) -> Result<String, ToolError>;
 }
 
+/// Where Publish / Destructive calls go to wait for the owner.
+#[async_trait]
+pub trait ApprovalSink: Send + Sync {
+    /// Record a pending approval; the UI shows Approve / Decline in the chat.
+    async fn request(&self, tool: &str, args: Value, summary: String, ctx: &ToolContext) -> Result<String, ToolError>;
+}
+
 #[derive(Default, Clone)]
 pub struct Registry {
     tools: BTreeMap<String, Arc<dyn Tool>>,
     sink: Option<Arc<dyn JobSink>>,
+    approvals: Option<Arc<dyn ApprovalSink>>,
 }
 
 impl Registry {
@@ -114,9 +126,14 @@ impl Registry {
         self
     }
 
-    /// The same registry without a sink (used by the job worker itself).
+    pub fn with_approvals(mut self, sink: Arc<dyn ApprovalSink>) -> Self {
+        self.approvals = Some(sink);
+        self
+    }
+
+    /// The same registry without sinks (job worker, approved actions).
     pub fn direct(&self) -> Self {
-        Self { tools: self.tools.clone(), sink: None }
+        Self { tools: self.tools.clone(), sink: None, approvals: None }
     }
 
     pub fn specs(&self) -> Vec<ToolSpec> {
@@ -131,7 +148,14 @@ impl Registry {
     pub async fn call(&self, name: &str, args: Value, ctx: &ToolContext) -> Result<ToolOutput, ToolError> {
         let tool = self.get(name).ok_or_else(|| ToolError::Unknown(name.into()))?;
         if tool.spec().risk.needs_approval() && !ctx.approved {
-            return Err(ToolError::NeedsApproval);
+            let Some(approvals) = &self.approvals else { return Err(ToolError::NeedsApproval) };
+            let summary = tool.approval_summary(&args);
+            let id = approvals.request(name, args, summary.clone(), ctx).await?;
+            return Ok(ToolOutput {
+                summary: format!("Waiting for the owner: “{summary}”. An Approve button is in the chat. Tell them what will happen and stop; don't retry."),
+                files: vec![],
+                data: serde_json::json!({ "approval_id": id }),
+            });
         }
         std::fs::create_dir_all(&ctx.job_dir).map_err(|e| ToolError::Failed(e.to_string()))?;
         if let (true, Some(sink)) = (tool.spec().long_running, &self.sink) {

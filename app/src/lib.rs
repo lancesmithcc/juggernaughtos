@@ -11,6 +11,8 @@ pub mod assets;
 #[cfg(feature = "ssr")]
 pub mod server;
 #[cfg(feature = "ssr")]
+pub mod site;
+#[cfg(feature = "ssr")]
 pub mod web;
 
 #[cfg(feature = "hydrate")]

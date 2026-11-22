@@ -50,6 +50,7 @@ pub struct AppState {
     pub setup_token: Arc<Mutex<Option<String>>>,
     pub mailer: Option<Arc<Mailer>>,
     pub steward: jugg_steward::client::StewardClient,
+    pub site: Arc<crate::site::SiteEnv>,
 }
 
 impl FromRef<AppState> for LeptosOptions {
@@ -107,7 +108,17 @@ impl AppState {
         let brand = brand.and_then(|j| serde_json::from_str(&j).ok()).unwrap_or_default();
         let lock_path = cfg.tools_dir.join("tools.lock.toml");
         let lock = std::fs::read_to_string(&lock_path).ok().and_then(|s| jugg_tools::lock::ToolsLock::parse(&s).ok()).unwrap_or_else(jugg_tools::lock::ToolsLock::embedded);
-        let registry = Registry::standard(&lock, &cfg.tools_dir).with_job_sink(Arc::new(crate::assets::DbJobSink { pool: pool.clone() }));
+        let cfg_arc = Arc::new(cfg.clone());
+        let brand_lock = Arc::new(RwLock::new(brand));
+        let (ring, signer) = (Arc::new(ring), Arc::new(signer));
+        let site = Arc::new(crate::site::SiteEnv { pool: pool.clone(), cfg: cfg_arc.clone(), brand: brand_lock.clone(), signer: signer.clone(), ring: ring.clone() });
+        let mut registry = Registry::standard(&lock, &cfg.tools_dir);
+        registry.register(crate::site::SitePages(site.clone()));
+        registry.register(crate::site::SiteSavePage(site.clone()));
+        registry.register(crate::site::SiteOverride(site.clone()));
+        registry.register(crate::site::SitePublish(site.clone()));
+        registry.register(crate::site::SiteRollback(site.clone()));
+        let registry = registry.with_job_sink(Arc::new(crate::assets::DbJobSink { pool: pool.clone() })).with_approvals(Arc::new(crate::site::DbApprovals { pool: pool.clone() }));
         let provider = load_provider(&pool, &ring).await;
         let owners: i64 = sqlx::query_scalar("SELECT count(*) FROM users WHERE role='owner'").fetch_one(&pool).await.map_err(err)?;
         let (rp_id, origin) = (rp_id(&cfg), admin_origin(&cfg));
@@ -130,11 +141,11 @@ impl AppState {
         let cfg_socket = cfg.steward_socket.clone();
         Ok(Self {
             leptos_options,
-            cfg: Arc::new(cfg),
+            cfg: cfg_arc,
             pool,
-            ring: Arc::new(ring),
-            signer: Arc::new(signer),
-            brand: Arc::new(RwLock::new(brand)),
+            ring,
+            signer,
+            brand: brand_lock,
             registry,
             provider: Arc::new(RwLock::new(provider)),
             correlator: Arc::new(Mutex::new(correlator)),
@@ -147,6 +158,7 @@ impl AppState {
             setup_token: Arc::new(Mutex::new(setup_token)),
             mailer,
             steward: jugg_steward::client::StewardClient::spawn(cfg_socket),
+            site,
         })
     }
 
@@ -586,6 +598,7 @@ pub async fn chat_stream(State(st): State<AppState>, Path(turn_id): Path<String>
 
 async fn run_turn(st: AppState, turn: Turn, out: tokio::sync::mpsc::Sender<AgentEvent>) {
     let Turn { conversation_id: conv, text, .. } = turn;
+    let started = jugg_core::now_unix();
     let history = load_history(&st, &conv).await;
     if let Err(e) = store_message(&st, &conv, "user", &text, None, "owner").await {
         let _ = out.send(AgentEvent::Error { message: e }).await;
@@ -652,6 +665,10 @@ async fn run_turn(st: AppState, turn: Turn, out: tokio::sync::mpsc::Sender<Agent
     let assets = crate::assets::sweep(&st, &conv, &st.cfg.data_dir.join("jobs").join(&conv)).await;
     if !assets.is_empty() {
         let _ = out.send(AgentEvent::Assets { items: serde_json::to_value(&assets).unwrap_or_default() }).await;
+    }
+    let approvals = crate::site::approvals_since(&st, &conv, started).await;
+    if !approvals.is_empty() {
+        let _ = out.send(AgentEvent::Approvals { items: serde_json::to_value(&approvals).unwrap_or_default() }).await;
     }
     let _ = store_message(&st, &conv, "assistant", &reply, Some(serde_json::Value::Array(tools).to_string()), &label).await;
     let _ = sqlx::query("UPDATE conversations SET updated_at = ? WHERE id = ?").bind(jugg_core::now_unix()).bind(&conv).execute(&st.pool).await;
@@ -792,7 +809,11 @@ pub async fn complete_setup(st: &AppState, input: crate::api::WizardInput) -> Re
         *t = None;
     }
     let _ = std::fs::remove_file(st.cfg.keys_dir.join("setup-token"));
+    let starter = crate::site::starter_homepage(&brand, &input.what_you_do, &input.audience);
     *st.brand.write().await = brand;
+    if let Err(e) = st.site.save_page(starter).await {
+        tracing::warn!(error = %e, "starter homepage not saved");
+    }
     Ok((user, codes))
 }
 

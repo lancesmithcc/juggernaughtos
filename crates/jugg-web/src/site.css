@@ -11,7 +11,12 @@ a{color:inherit;text-underline-offset:0.2em}
 :focus-visible{outline:3px solid var(--color-primary);outline-offset:3px}
 .skip{position:absolute;left:-999px}.skip:focus{left:var(--space-4);top:var(--space-4);z-index:10;background:var(--color-surface-raised);padding:var(--space-2) var(--space-4)}
 .site-header,.site-footer{padding:var(--space-5) clamp(var(--space-4),5vw,var(--space-8))}
+.site-header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--space-3) var(--space-5)}
 .brand{font-family:var(--font-heading);font-weight:700;text-decoration:none}
+.site-nav{display:flex;flex-wrap:wrap;gap:var(--space-1) var(--space-5)}
+.site-nav a{display:inline-flex;align-items:center;min-height:44px;text-decoration:none;font-weight:500;color:var(--color-ink-soft)}
+.site-nav a:hover,.site-nav a[aria-current=page]{color:var(--color-ink)}
+.site-nav a[aria-current=page]{text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:0.4em;text-decoration-color:var(--color-primary)}
 .block{padding:clamp(var(--space-7),9vw,var(--space-10)) clamp(var(--space-4),5vw,var(--space-8))}
 .inner{max-width:72rem;margin:0 auto}
 .tone-light{background:var(--color-surface);color:var(--color-ink)}
@@ -19,7 +24,8 @@ a{color:inherit;text-underline-offset:0.2em}
 .tone-accent{background:var(--color-primary);color:var(--color-primary-ink)}
 .eyebrow{text-transform:uppercase;letter-spacing:0.12em;font-size:var(--text-n1);font-weight:600;opacity:0.8;margin-bottom:var(--space-3)}
 .hero{display:grid;gap:var(--space-7);align-items:center}
-@media (min-width:768px){.hero{grid-template-columns:1.1fr 1fr}}
+@media (min-width:768px){.hero:has(.hero-media){grid-template-columns:1.1fr 1fr}}
+.hero .inner{width:100%}
 .actions{display:flex;flex-wrap:wrap;gap:var(--space-3);margin-top:var(--space-5)}
 .btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 var(--space-5);border-radius:var(--radius-pill);font-weight:600;text-decoration:none;transition:transform var(--motion-fast) var(--ease),background var(--motion-fast) var(--ease)}
 .btn:hover{transform:translateY(-1px)}

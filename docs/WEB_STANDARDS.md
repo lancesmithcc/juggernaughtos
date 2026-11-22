@@ -49,6 +49,16 @@ Source of truth: `crates/jugg-web/src/validate.rs` (`RULES`).
 - Contrast ≥ 4.5:1 for body text and button labels (checked from tokens).
 - Visible focus rings; skip link; landmarks.
 
+## How it works in practice
+
+- Ask in chat ("build my homepage", "add a pricing page", "put the bakery photo in the hero").
+  The agent saves pages as drafts; you see each one at `/_preview/…` before anything goes live.
+- Publishing always asks you: an **Approve** card appears in chat (or press **Publish** in Website).
+- Every publish is a new immutable release; **Roll back** restores the previous one instantly.
+- Contact forms land encrypted in **Website → Messages from your site**. A hidden honeypot field
+  catches bots; each address can send five messages per 15 minutes.
+- In development the public site is at `http://site.localhost:3700`.
+
 ## Publish pipeline
 
 ```

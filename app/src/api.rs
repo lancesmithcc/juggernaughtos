@@ -38,6 +38,33 @@ pub struct AssetCard {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ApprovalView {
+    pub id: String,
+    pub summary: String,
+    /// pending | approved | rejected
+    pub status: String,
+    pub result: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SubmissionView {
+    pub id: String,
+    pub form: String,
+    pub fields: Vec<(String, String)>,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SiteView {
+    pub public_url: String,
+    pub live: bool,
+    pub pages: Vec<(String, String, String)>,
+    pub deploys: Vec<(String, String, i64)>,
+    pub submissions: Vec<SubmissionView>,
+    pub overrides: Vec<(String, String, String)>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct JobView {
     pub id: String,
     pub tool: String,
@@ -63,6 +90,7 @@ pub enum StreamEvent {
     ApprovalRequired { tool: String, summary: String },
     Usage {},
     Assets { items: Vec<AssetCard> },
+    Approvals { items: Vec<ApprovalView> },
     Done,
     Error { message: String },
 }
@@ -416,4 +444,38 @@ pub async fn list_jobs() -> Result<Vec<JobView>, ServerFnError> {
     let st = ctx::state()?;
     ctx::user(&st).await?;
     Ok(crate::assets::jobs(&st).await)
+}
+
+// ---------------------------------------------------------------- website + approvals
+
+#[server]
+pub async fn decide_approval(id: String, approve: bool) -> Result<ApprovalView, ServerFnError> {
+    let st = ctx::state()?;
+    let user = ctx::user(&st).await?;
+    crate::site::decide_approval(&st, &user, &id, approve).await.map_err(ServerFnError::new)
+}
+
+#[server]
+pub async fn get_site() -> Result<SiteView, ServerFnError> {
+    let st = ctx::state()?;
+    ctx::user(&st).await?;
+    let pages = st.site.pages().await.into_iter().map(|(p, s, _)| (p.slug, p.title, s)).collect();
+    let deploys: Vec<(String, String, i64)> = jugg_db::sqlx::query_as("SELECT id, status, created_at FROM site_deploys ORDER BY created_at DESC LIMIT 10").fetch_all(&st.pool).await?;
+    let overrides: Vec<(String, String, String)> = jugg_db::sqlx::query_as("SELECT rule, target, reason FROM standards_overrides WHERE revoked_at IS NULL ORDER BY created_at DESC LIMIT 20").fetch_all(&st.pool).await?;
+    Ok(SiteView { public_url: st.site.public_url(), live: deploys.iter().any(|d| d.1 == "live"), pages, deploys, submissions: crate::site::submissions(&st).await, overrides })
+}
+
+/// The owner pressing Publish in the Website panel is the approval.
+#[server]
+pub async fn publish_site() -> Result<String, ServerFnError> {
+    let st = ctx::state()?;
+    let user = ctx::user(&st).await?;
+    st.site.publish(&user).await.map_err(ServerFnError::new)
+}
+
+#[server]
+pub async fn rollback_site() -> Result<String, ServerFnError> {
+    let st = ctx::state()?;
+    let user = ctx::user(&st).await?;
+    st.site.rollback(&user).await.map_err(ServerFnError::new)
 }

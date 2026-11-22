@@ -57,6 +57,8 @@ pub enum AgentEvent {
     Usage { input_tokens: u64, output_tokens: u64, model: String },
     /// New assets registered from this turn's work (asset cards for the UI).
     Assets { items: serde_json::Value },
+    /// Actions waiting for the owner's Approve / Decline.
+    Approvals { items: serde_json::Value },
     Done,
     Error { message: String },
 }

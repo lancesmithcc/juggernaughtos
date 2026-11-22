@@ -8,7 +8,9 @@ pub struct Csp;
 
 impl Csp {
     /// Public-site policy. Nothing outside the site's own origin, ever.
-    pub const PUBLIC: &'static str = "default-src 'none'; img-src 'self' data:; style-src 'self'; font-src 'self'; \
+    /// `connect-src 'self'` only lets same-origin fetches (crawlers' robots.txt
+    /// checks) through; the page itself has no scripts.
+    pub const PUBLIC: &'static str = "default-src 'none'; img-src 'self' data:; style-src 'self'; font-src 'self'; connect-src 'self'; \
         form-action 'self'; base-uri 'none'; frame-ancestors 'none'; upgrade-insecure-requests";
 }
 
@@ -29,10 +31,20 @@ pub fn site_css(brand: &BrandStandards) -> String {
 }
 
 pub fn render_page(page: &Page, brand: &BrandStandards, css_href: &str) -> String {
+    crate::site::render_page_with(page, brand, &crate::site::SiteContext { css_href: css_href.into(), ..Default::default() })
+}
+
+pub(crate) fn body_html(page: &Page) -> String {
     let mut body = String::new();
     for b in &page.blocks {
         body.push_str(&block(b));
     }
+    body
+}
+
+#[allow(dead_code)]
+fn render_page_legacy(page: &Page, brand: &BrandStandards, css_href: &str) -> String {
+    let body = body_html(page);
     format!(
         "<!doctype html><html lang=\"{lang}\"><head><meta charset=\"utf-8\">\
          <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\
@@ -201,6 +213,7 @@ mod tests {
             title: "<Acme>".into(),
             description: "d".into(),
             lang: None,
+            nav: None,
             blocks: vec![
                 Block::Hero { eyebrow: None, heading: "Hi \"there\"".into(), body: None, cta: None, secondary: None, image: None, tone: Tone::Dark },
                 Block::RawHtml { html: "<p onclick=\"x()\">ok</p><script>alert(1)</script><a href=\"javascript:alert(1)\">x</a>".into(), tone: Tone::Light },

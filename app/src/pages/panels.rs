@@ -1,6 +1,6 @@
 //! Sidebar panels. Everything here is also doable from chat; panels are for looking.
 
-use crate::api::{get_brand, get_providers, get_security, get_sign_in_methods, get_standards, get_tools, save_provider_settings};
+use crate::api::{get_site, publish_site, rollback_site, get_brand, get_providers, get_security, get_sign_in_methods, get_standards, get_tools, save_provider_settings};
 use crate::pages::account::{AddPasskey, RegenerateRecovery, TotpEnroll};
 use leptos::prelude::*;
 
@@ -44,9 +44,73 @@ pub fn BrandPanel() -> impl IntoView {
 
 #[component]
 pub fn WebsitePanel() -> impl IntoView {
+    let site = Resource::new(|| (), |_| get_site());
     let std = Resource::new(|| (), |_| get_standards());
+    let msg = RwSignal::new(None::<String>);
+    let working = RwSignal::new(false);
+    let act = move |publish: bool| {
+        working.set(true);
+        msg.set(None);
+        leptos::task::spawn_local(async move {
+            let r = if publish { publish_site().await } else { rollback_site().await };
+            msg.set(Some(match r { Ok(m) => m, Err(e) => e.to_string().replace("error running server function: ", "") }));
+            working.set(false);
+            site.refetch();
+        });
+    };
     view! {
-        <Panel title="Website" lede="Your site is built from checked blocks: secure, fast and accessible by construction. You can override a rule — you'll see why it exists first.">
+        <Panel title="Website" lede="Your site is built from checked blocks: secure, fast and accessible by construction. Ask in chat to add or change pages; publish here or there.">
+            <Suspense fallback=|| view! { <div class="skeleton"></div> }>
+                {move || Suspend::new(async move {
+                    site.await.map(|s| {
+                        let has_drafts = s.pages.iter().any(|p| p.2 == "draft");
+                        let can_rollback = s.deploys.iter().filter(|d| d.1 == "superseded").count() > 0;
+                        let no_pages = s.pages.is_empty();
+                        view! {
+                            <div class="site-status">
+                                <div>
+                                    <p class="eyebrow">{if s.live { "Live" } else { "Not published yet" }}</p>
+                                    <a class="site-url" href=s.public_url.clone() target="_blank" rel="noopener">{s.public_url.clone()}</a>
+                                    {has_drafts.then(|| view! { <p class="hint">"You have unpublished changes."</p> })}
+                                </div>
+                                <div class="site-actions">
+                                    {can_rollback.then(|| view! { <button class="btn ghost small" disabled=move || working.get() on:click=move |_| act(false)>"Roll back"</button> })}
+                                    <button class="btn primary small" disabled=move || working.get() || no_pages on:click=move |_| act(true)>
+                                        {move || if working.get() { "Publishing…" } else { "Publish" }}
+                                    </button>
+                                </div>
+                            </div>
+                            {move || msg.get().map(|m| view! { <p class="site-msg" role="status">{m}</p> })}
+                            <h2 class="section-h">"Pages"</h2>
+                            <ul class="rules">{s.pages.into_iter().map(|(slug, title, status)| {
+                                let preview = format!("/_preview{}", if slug == "/" { "/".to_string() } else { slug.clone() });
+                                view! {
+                                    <li class="rule">
+                                        <code>{slug}</code>
+                                        <span class=format!("badge page-{status}")>{if status == "draft" { "unpublished changes".to_string() } else { status.clone() }}</span>
+                                        <p><a href=preview target="_blank" rel="noopener">{title}" — preview ↗"</a></p>
+                                    </li>
+                                }
+                            }).collect_view()}</ul>
+                            {(!s.submissions.is_empty()).then(|| view! {
+                                <h2 class="section-h">"Messages from your site"</h2>
+                                <ul class="rules">{s.submissions.into_iter().map(|m| view! {
+                                    <li class="rule submission"><code>{m.form}</code>
+                                        <dl class="kv">{m.fields.into_iter().map(|(k, v)| view! { <dt>{k}</dt><dd>{v}</dd> }).collect_view()}</dl>
+                                    </li>
+                                }).collect_view()}</ul>
+                            })}
+                            {(!s.overrides.is_empty()).then(|| view! {
+                                <h2 class="section-h">"Standards you chose to override"</h2>
+                                <ul class="rules">{s.overrides.into_iter().map(|(rule, target, reason)| view! {
+                                    <li class="rule"><code>{rule}</code><span class="badge warn">{target}</span><p>{reason}</p></li>
+                                }).collect_view()}</ul>
+                            })}
+                        }
+                    })
+                })}
+            </Suspense>
+            <h2 class="section-h">"Web standards"</h2>
             <Suspense fallback=|| view! { <div class="skeleton"></div> }>
                 {move || Suspend::new(async move {
                     std.await.map(|s| view! {

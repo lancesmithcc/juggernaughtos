@@ -7,10 +7,12 @@
 //! accessible and on-brand by construction. See `docs/WEB_STANDARDS.md`.
 
 mod render;
+mod site;
 mod validate;
 
 pub use render::{render_page, site_css, Csp, SECURITY_HEADERS};
-pub use validate::{validate_page, Override, Report, Rule, Violation, RULES};
+pub use site::{site_css_with_fonts as site_css_with_fonts_pub, build_site, page_path, render_page_with, valid_slug, BuildError, Built, FontFace, SiteContext};
+pub use validate::{rule_level, Level, validate_page, Override, Report, Rule, Violation, RULES};
 
 use serde::{Deserialize, Serialize};
 
@@ -23,6 +25,9 @@ pub struct Page {
     pub blocks: Vec<Block>,
     #[serde(default)]
     pub lang: Option<String>,
+    /// Label in the site menu; pages without one stay out of the menu.
+    #[serde(default)]
+    pub nav: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

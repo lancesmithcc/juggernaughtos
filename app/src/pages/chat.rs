@@ -1,5 +1,5 @@
-use crate::api::{get_overview, start_turn, AssetCard, StreamEvent, ToolActivity};
-use crate::pages::assets::AssetTile;
+use crate::api::{get_overview, start_turn, ApprovalView, AssetCard, StreamEvent, ToolActivity};
+use crate::pages::assets::{ApprovalCard, AssetTile};
 use leptos::prelude::*;
 
 #[derive(Clone)]
@@ -11,11 +11,12 @@ struct Msg {
     live: RwSignal<Option<String>>,
     streaming: RwSignal<bool>,
     assets: RwSignal<Vec<AssetCard>>,
+    approvals: RwSignal<Vec<ApprovalView>>,
 }
 
 impl Msg {
     fn new(id: usize, user: bool, text: String) -> Self {
-        Self { id, user, text: RwSignal::new(text), tools: RwSignal::new(vec![]), live: RwSignal::new(None), streaming: RwSignal::new(!user), assets: RwSignal::new(vec![]) }
+        Self { id, user, text: RwSignal::new(text), tools: RwSignal::new(vec![]), live: RwSignal::new(None), streaming: RwSignal::new(!user), assets: RwSignal::new(vec![]), approvals: RwSignal::new(vec![]) }
     }
 }
 
@@ -62,6 +63,7 @@ pub fn ChatPage() -> impl IntoView {
                             busy.set(false);
                         }
                         StreamEvent::Assets { items } => reply.assets.update(|a| a.extend(items)),
+                        StreamEvent::Approvals { items } => reply.approvals.update(|a| a.extend(items)),
                         StreamEvent::Usage {} => {}
                     });
                 }
@@ -152,7 +154,7 @@ fn Message(msg: Msg) -> impl IntoView {
     if msg.user {
         return view! { <div class="msg user"><div class="bubble">{move || msg.text.get()}</div></div> }.into_any();
     }
-    let Msg { text, tools, live, streaming, assets, .. } = msg;
+    let Msg { text, tools, live, streaming, assets, approvals, .. } = msg;
     let waiting = move || streaming.get() && text.with(|t| t.is_empty()) && tools.with(|t| t.is_empty());
     view! {
         <div class="msg assistant" class:streaming=move || streaming.get()>
@@ -168,6 +170,13 @@ fn Message(msg: Msg) -> impl IntoView {
                 {move || live.get().map(|l| view! { <p class="live">{l}</p> })}
                 <Show when=waiting fallback=move || view! { <div class="text md" inner_html=move || crate::markdown::render(&text.get())></div> }>
                     <span class="dots" aria-label="Working"><i></i><i></i><i></i></span>
+                </Show>
+                <Show when=move || !approvals.with(|a| a.is_empty())>
+                    <div class="chat-approvals">
+                        <For each=move || approvals.get() key=|a| a.id.clone() let:a>
+                            <ApprovalCard item=a/>
+                        </For>
+                    </div>
                 </Show>
                 <Show when=move || !assets.with(|a| a.is_empty())>
                     <div class="chat-assets">

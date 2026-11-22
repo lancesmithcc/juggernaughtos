@@ -37,7 +37,18 @@ pub const RULES: &[Rule] = &[
     Rule { id: "sec.external_resource", level: Level::Error, chat_overridable: false, why: "Hotlinked images/scripts leak visitor data and break CSP." },
     Rule { id: "sec.link_scheme", level: Level::Error, chat_overridable: false, why: "Only https:, mailto:, tel: and site-relative links are allowed." },
     Rule { id: "sec.raw_html", level: Level::Warn, chat_overridable: true, why: "Raw HTML bypasses the block system; it is sanitized and logged." },
+    Rule { id: "site.internal_link", level: Level::Warn, chat_overridable: true, why: "Links to pages that don't exist frustrate visitors and hurt search ranking." },
+    Rule { id: "site.unapproved_media", level: Level::Error, chat_overridable: true, why: "Only images you approved in Assets go on the public site." },
 ];
+
+pub(crate) fn violation(id: &str, message: String, overrides: &[Override]) -> Violation {
+    let r = rule(id);
+    Violation { rule: id.into(), level: r.level, message, overridden: r.chat_overridable && overrides.iter().any(|o| o.rule == id) }
+}
+
+pub fn rule_level(id: &str) -> Level {
+    rule(id).level
+}
 
 pub fn rule(id: &str) -> &'static Rule {
     RULES.iter().find(|r| r.id == id).expect("unknown rule id")
@@ -181,6 +192,7 @@ mod tests {
             title: "Acme Bakery — Fresh bread daily".into(),
             description: "Small-batch sourdough and pastries baked every morning in downtown Nanaimo.".into(),
             lang: None,
+            nav: None,
             blocks: vec![
                 Block::Hero {
                     eyebrow: Some("Since 1998".into()),

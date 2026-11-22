@@ -38,6 +38,9 @@ rustls-acme = { workspace = true, optional = true }
 axum-server = { workspace = true, optional = true }
 jugg-backup = { workspace = true, optional = true }
 async-trait = { workspace = true, optional = true }
+image = { workspace = true, optional = true }
+url = { version = "2", optional = true }
+reqwest = { workspace = true, optional = true }
 futures = { workspace = true, optional = true }
 tracing = { workspace = true, optional = true }
 tracing-subscriber = { workspace = true, optional = true }
@@ -58,7 +61,7 @@ jugg-updater = { workspace = true, optional = true }
 default = ["ssr"]
 hydrate = ["leptos/hydrate", "dep:console_error_panic_hook", "dep:wasm-bindgen", "dep:web-sys", "dep:js-sys", "dep:wasm-bindgen-futures"]
 ssr = [
-    "dep:leptos_axum", "dep:axum", "dep:lettre", "dep:futures", "dep:rustls-acme", "dep:axum-server", "dep:jugg-backup", "dep:async-trait", "dep:tokio", "dep:tower", "dep:tower-http", "dep:http", "dep:clap",
+    "dep:leptos_axum", "dep:axum", "dep:lettre", "dep:futures", "dep:rustls-acme", "dep:axum-server", "dep:jugg-backup", "dep:async-trait", "dep:image", "dep:url", "dep:reqwest", "dep:tokio", "dep:tower", "dep:tower-http", "dep:http", "dep:clap",
     "dep:tracing", "dep:tracing-subscriber", "dep:secrecy", "dep:rustls",
     "dep:jugg-core", "dep:jugg-crypto", "dep:jugg-db", "dep:jugg-auth", "dep:jugg-brand", "dep:jugg-ai",
     "dep:jugg-tools", "dep:jugg-web", "dep:jugg-steward", "dep:jugg-updater",

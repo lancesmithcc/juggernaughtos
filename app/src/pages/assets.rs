@@ -1,6 +1,6 @@
 //! Asset tiles (in chat and in the library) and the Assets panel.
 
-use crate::api::{decide_asset, list_assets, list_jobs, AssetCard};
+use crate::api::{decide_approval, decide_asset, list_assets, list_jobs, ApprovalView, AssetCard};
 use leptos::prelude::*;
 
 fn label(kind: &str) -> String {
@@ -160,5 +160,46 @@ pub fn AssetsPanel() -> impl IntoView {
                 })}
             </Suspense>
         </section>
+    }
+}
+
+/// An action that waits for the owner (publish, roll back, …).
+#[component]
+pub fn ApprovalCard(item: ApprovalView) -> impl IntoView {
+    let item = RwSignal::new(item);
+    let working = RwSignal::new(false);
+    let decide = move |approve: bool| {
+        working.set(true);
+        let id = item.get_untracked().id;
+        leptos::task::spawn_local(async move {
+            match decide_approval(id, approve).await {
+                Ok(v) => item.set(v),
+                Err(e) => item.update(|i| i.result = Some(e.to_string().replace("error running server function: ", ""))),
+            }
+            working.set(false);
+        });
+    };
+    view! {
+        {move || {
+            let i = item.get();
+            let pending = i.status == "pending";
+            view! {
+                <div class="approval" data-status=i.status.clone()>
+                    <div class="approval-text">
+                        <p class="approval-kicker">{if pending { "Needs your OK" } else if i.status == "approved" { "Approved" } else { "Declined" }}</p>
+                        <p class="approval-summary">{i.summary.clone()}</p>
+                        {i.result.clone().map(|r| view! { <p class="approval-result">{r}</p> })}
+                    </div>
+                    {pending.then(|| view! {
+                        <div class="approval-actions">
+                            <button class="btn ghost small" disabled=move || working.get() on:click=move |_| decide(false)>"Not now"</button>
+                            <button class="btn primary small" disabled=move || working.get() on:click=move |_| decide(true)>
+                                {move || if working.get() { "Working…" } else { "Approve" }}
+                            </button>
+                        </div>
+                    })}
+                </div>
+            }
+        }}
     }
 }
