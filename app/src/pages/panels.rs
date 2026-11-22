@@ -89,8 +89,10 @@ pub fn SecurityPanel() -> impl IntoView {
         <Panel title="Security" lede="The Steward watches, patches and backs up on its own. You'll hear from it only when something needs you.">
             <Suspense fallback=|| view! { <div class="skeleton"></div> }>
                 {move || Suspend::new(async move {
-                    sec.await.map(|s| view! {
-                        <div class="posture"><span class="pulse" aria-hidden="true"></span><p>{s.posture}</p></div>
+                    sec.await.map(|s| {
+                        let (attention, caution) = (s.posture.starts_with("Needs attention"), s.posture.contains("keep an eye"));
+                        view! {
+                        <div class="posture" class:attention=attention class:caution=caution><span class="pulse" aria-hidden="true"></span><p>{s.posture}</p></div>
                         {(!s.checks.is_empty()).then(|| view! {
                             <h2 class="section-h">"Health checks"</h2>
                             <ul class="rules">{s.checks.into_iter().map(|(name, status, detail)| view! {
@@ -116,6 +118,7 @@ pub fn SecurityPanel() -> impl IntoView {
                         <ul class="rules">{s.tasks.into_iter().map(|(n, when, what)| view! {
                             <li class="rule"><code>{n}</code><span class="badge">{when}</span><p>{what}</p></li>
                         }).collect_view()}</ul>
+                        }
                     })
                 })}
             </Suspense>

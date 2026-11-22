@@ -160,7 +160,7 @@ fi
 
 # ------------------------------------------------------------------ firewall
 if [[ $FIREWALL -eq 1 ]]; then
-  SSH_PORT=$(sshd -T 2>/dev/null | awk '/^port / {print $2; exit}'); SSH_PORT=${SSH_PORT:-22}
+  SSH_PORT=$( { sshd -T 2>/dev/null || true; } | awk '/^port / {print $2; exit}'); SSH_PORT=${SSH_PORT:-22}
   ARGS=(--ssh-port "$SSH_PORT"); for a in "${SSH_ALLOW[@]}"; do ARGS+=(--ssh-allow "$a"); done
   install -d /etc/nftables.d
   /usr/local/bin/juggernaught firewall "${ARGS[@]}" > "$WORK/juggernaught.nft"
