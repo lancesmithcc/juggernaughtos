@@ -558,11 +558,15 @@ pub struct HandoffView {
     pub shape: String,
     /// https://chatgpt.com/?q=… with the prompt filled in.
     pub open_url: String,
-    /// waiting | done
+    /// waiting | making (Codex is on it) | done
     pub status: String,
     pub asset: Option<AssetCard>,
-    /// An OpenAI API key is saved, so "make it automatically" is offered.
+    /// Why the last automatic attempt failed.
+    pub note: Option<String>,
+    /// An OpenAI API key is saved, so "make it with the API" is offered.
     pub api_key_set: bool,
+    /// Codex is signed in with the owner's ChatGPT, so images are made automatically.
+    pub codex_ready: bool,
 }
 
 #[server]
@@ -570,6 +574,28 @@ pub async fn handoff_use_api(id: String) -> Result<HandoffView, ServerFnError> {
     let st = ctx::state()?;
     let user = ctx::user(&st).await?;
     crate::images::make_with_api(&st, &user, &id).await.map_err(ServerFnError::new)
+}
+
+#[server]
+pub async fn handoff_status(id: String) -> Result<HandoffView, ServerFnError> {
+    let st = ctx::state()?;
+    let user = ctx::user(&st).await?;
+    crate::images::status(&st, &user, &id).await.map_err(ServerFnError::new)
+}
+
+#[server]
+pub async fn handoff_retry_codex(id: String) -> Result<HandoffView, ServerFnError> {
+    let st = ctx::state()?;
+    let user = ctx::user(&st).await?;
+    crate::images::retry_codex(&st, &user, &id).await.map_err(ServerFnError::new)
+}
+
+/// Settings: is Codex signed in with ChatGPT for automatic images?
+#[server]
+pub async fn codex_images_ready() -> Result<bool, ServerFnError> {
+    let st = ctx::state()?;
+    ctx::user(&st).await?;
+    Ok(crate::images::codex_ready(&st.cfg).await)
 }
 
 

@@ -125,17 +125,26 @@ Internal review of the whole system, done 2026-11-22. Each finding and what chan
 | 7 | Parsers of attacker-controlled input had example tests only | medium | **proptest** suites: field/file decryption (tampering, garbage), backup files, sshd journal lines, honeytoken paths, IPs headed for nftables, the brand gate (SVG/HTML/PDF/raster/CSS), chat markdown, the HTML sanitizer, page slugs, the MCP handler |
 | 8 | No machine-readable inventory of what ships | low | CycloneDX 1.5 SBOM (`scripts/sbom.py`): every crate linked into the binary with its Cargo.lock checksum and licence, plus every pinned tool with its per-arch SHA-256. Shipped in the tarball and next to it as `*.sbom.cdx.json` |
 
-### Images from the owner's ChatGPT (hand-off)
+### Images from the owner's ChatGPT (Codex, or hand-off)
 
-- No browser automation and no ChatGPT credentials on the box. `generate_image` stores a request
-  (`image_handoffs`) and the chat shows an Open in ChatGPT link (`https://chatgpt.com/?q=` with the
-  prompt URL-encoded); the owner makes the image in their own browser.
+- Automatic path: the official Codex CLI, signed in by the owner with their ChatGPT account
+  (`juggernaught connect codex-images` runs `codex login`; we never see the credentials, which live
+  in the agent home like the chat CLIs'). Each request runs `codex exec --ephemeral --sandbox
+  read-only` (inside the bubblewrap profile on Linux) with only the image prompt on stdin, one at a
+  time, paced (30/h, 120/day). The PNG is read from Codex's `generated_images/<thread id>` folder
+  (the thread id is checked to be hex and dashes before it becomes a path), then that folder is
+  deleted. Only a ChatGPT login counts as ready; an API-key login would bill differently.
+- Fallback: `generate_image` stores a request (`image_handoffs`) and the chat shows an Open in
+  ChatGPT link (`https://chatgpt.com/?q=` with the prompt URL-encoded); the owner makes the image in
+  their own browser.
 - The owner's image comes back through `POST /files/handoff/{id}`: session cookie required
-  (`SameSite=Strict`, so no cross-site posts), 25 MB body limit, decoded with a 50-megapixel cap,
+  (`SameSite=Strict`, so no cross-site posts), the request must belong to one of the signed-in
+  user's conversations, 25 MB body limit, decoded with a 50-megapixel cap,
   re-encoded to PNG (drops EXIF and other metadata), filed through the normal brand gate into
   Assets, one image per request, audit-logged (`images.handoff_added`).
 - The optional OpenAI Images API key is sealed like other provider secrets; API generations are
   paced (`image_generations`, `image_cooldowns`) and the pacing fails closed.
+- Codex images and owner uploads go through the same decode, re-encode and brand gate.
 - An earlier Playwright worker that drove ChatGPT was removed: ChatGPT's Cloudflare check and
   Google sign-in block automated browsers, and we don't build bot-check evasion.
 

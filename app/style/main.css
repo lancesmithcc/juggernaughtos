@@ -559,3 +559,7 @@ fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: 10px; }
   .setup-body { padding: 18px 20px 6px; }
   .setup-head, .setup-foot { padding-left: 20px; padding-right: 20px; }
 }
+
+/* A shell command the owner copies. */
+.cmd-line { display: inline-block; padding: 6px 10px; border-radius: 10px; background: var(--surface-sunk); user-select: all; }
+.handoff-head strong .spinner { margin-right: 8px; vertical-align: -2px; }

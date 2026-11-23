@@ -113,7 +113,7 @@ through the durable `jobs` queue with heartbeats and retries.
 
 | Capability | Tool | Integration |
 |---|---|---|
-| Textures, icon sets, hero images | GPT Image in the owner's own ChatGPT (README decision 2) | `generate_image` writes a brand-aware prompt and a hand-off card (Open in ChatGPT with the prompt filled in, drop/paste/pick the image back); uploads are re-encoded to PNG and go through the brand gate into Assets; optional OpenAI Images API key makes it automatically (paced 60/h, 300/day) |
+| Textures, icon sets, hero images | GPT Image in the owner's own ChatGPT (README decision 2) | `generate_image` writes a brand-aware prompt; with Codex signed in to ChatGPT (`connect codex-images`) it is made headless in the background and lands in the chat and Assets by itself (paced 30/h, 120/day); otherwise a hand-off card (Open in ChatGPT with the prompt filled in, drop/paste/pick the image back); every image is re-encoded to PNG and goes through the brand gate; optional OpenAI Images API key as a third way (paced 60/h, 300/day) |
 | Vectorize logo | Vectorverter 5000 core | linked crate, brand palette lock |
 | Photo editing, compositing, social sizes | PhotoCraft | `photocraft-cli run/batch`, MCP for open-ended work |
 | Vector layouts: business cards, posters, signatures | VectorCraft | `vectorcraft-cli run --export pdf/svg` |

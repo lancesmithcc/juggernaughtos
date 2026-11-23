@@ -1,6 +1,6 @@
 //! Sidebar panels. Everything here is also doable from chat; panels are for looking.
 
-use crate::api::{image_settings, save_image_settings, get_site, publish_site, rollback_site, get_brand, get_providers, get_security, get_sign_in_methods, get_standards, get_tools, save_provider_settings};
+use crate::api::{codex_images_ready, image_settings, save_image_settings, get_site, publish_site, rollback_site, get_brand, get_providers, get_security, get_sign_in_methods, get_standards, get_tools, save_provider_settings};
 use crate::pages::account::{AddPasskey, RegenerateRecovery, TotpEnroll};
 use leptos::prelude::*;
 
@@ -327,10 +327,22 @@ fn SignIn() -> impl IntoView {
 /// How images are made: the owner's own ChatGPT, by hand-off. No sign-in needed here.
 #[component]
 fn ChatGptImages() -> impl IntoView {
+    let ready = Resource::new(|| (), |_| codex_images_ready());
     view! {
         <div class="intelligence chatgpt-images">
             <h3 class="sub-h">"Your ChatGPT"</h3>
-            <p class="hint">"When you ask for an image, I write the prompt with your brand's colours and imagery rules and give you an Open in ChatGPT button. Make the image there with your own account, then drop it back into the chat. It lands in Assets and gets checked against your brand like everything else. Nothing to connect: you're signed in to ChatGPT in your own browser."</p>
+            <p class="hint">"Images are made with GPT Image in your own ChatGPT plan. I write the prompt with your brand's colours and imagery rules; the finished image lands in the chat and in Assets, and gets checked against your brand like everything else."</p>
+            <Suspense fallback=|| view! { <p class="hint">"Checking…"</p> }>
+                {move || ready.get().map(|r| match r {
+                    Ok(true) => view! {
+                        <p class="ok-line">"Automatic: Codex is signed in with your ChatGPT account, so images are made without you lifting a finger."</p>
+                    }.into_any(),
+                    _ => view! {
+                        <p class="hint">"Right now you make each image yourself: an Open in ChatGPT button opens it with the prompt filled in, and you drop the picture back into the chat. To have them made automatically, sign Codex in with your ChatGPT account once, from the server's shell:"</p>
+                        <p><code class="cmd-line">"juggernaught connect codex-images"</code></p>
+                    }.into_any(),
+                })}
+            </Suspense>
         </div>
     }
 }
@@ -358,7 +370,7 @@ fn ImageSettings() -> impl IntoView {
     view! {
         <form class="intelligence" on:submit=save>
             <h3 class="sub-h">"OpenAI API key (optional)"</h3>
-            <p class="hint">"With a key saved, each image request also gets a Make it automatically button that uses the OpenAI Images API instead of ChatGPT (billed to your key, paced). Stored encrypted. Logos, cards, posts and the brand book never need an image model."</p>
+            <p class="hint">"Only needed without Codex. With a key saved, image requests also get a Use my API key button that uses the OpenAI Images API instead of ChatGPT (billed to your key, paced). Stored encrypted. Logos, cards, posts and the brand book never need an image model."</p>
             <div class="provider-fields">
                 <label>"OpenAI API key"
                     <input type="password" autocomplete="off" placeholder=move || if current.get().and_then(|r| r.ok()).is_some_and(|c| c.0) { "Saved · enter a new key to replace" } else { "sk-…" }

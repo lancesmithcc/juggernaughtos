@@ -177,15 +177,7 @@ impl AppState {
 
     /// Bubblewrap profile for agent CLIs on Linux servers; none in development.
     fn cli_sandbox(&self, job_dir: &std::path::Path) -> Option<jugg_ai::cli::CliSandbox> {
-        if self.cfg.dev || !cfg!(target_os = "linux") || !std::path::Path::new("/usr/bin/bwrap").exists() {
-            return None;
-        }
-        let exe_root = std::env::current_exe().ok().and_then(|p| p.parent().and_then(|d| d.parent()).map(|d| d.to_path_buf()));
-        Some(jugg_ai::cli::CliSandbox {
-            home: agent_home(&self.cfg),
-            read_only: exe_root.into_iter().chain(["/opt/juggernaught".into(), "/usr/local".into()]).collect(),
-            read_write: vec![job_dir.to_path_buf(), self.cfg.data_dir.join("run")],
-        })
+        cli_sandbox(&self.cfg, job_dir)
     }
 
     fn job_ctx(&self, conversation: &str, brand: BrandStandards) -> ToolContext {
@@ -216,6 +208,19 @@ impl AppState {
         let now = jugg_core::now_unix();
         self.limiter.lock().map(|mut l| l.blocked(&format!("ip:{ip}"), now) || account.is_some_and(|a| l.blocked(&format!("acct:{a}"), now))).unwrap_or(true)
     }
+}
+
+/// Bubblewrap profile for agent CLIs on Linux servers; none in development.
+pub(crate) fn cli_sandbox(cfg: &Config, job_dir: &std::path::Path) -> Option<jugg_ai::cli::CliSandbox> {
+    if cfg.dev || !cfg!(target_os = "linux") || !std::path::Path::new("/usr/bin/bwrap").exists() {
+        return None;
+    }
+    let exe_root = std::env::current_exe().ok().and_then(|p| p.parent().and_then(|d| d.parent()).map(|d| d.to_path_buf()));
+    Some(jugg_ai::cli::CliSandbox {
+        home: agent_home(cfg),
+        read_only: exe_root.into_iter().chain(["/opt/juggernaught".into(), "/usr/local".into()]).collect(),
+        read_write: vec![job_dir.to_path_buf(), cfg.data_dir.join("run")],
+    })
 }
 
 /// Agent CLIs (Claude Code, Codex) keep their login here, away from the app's data.

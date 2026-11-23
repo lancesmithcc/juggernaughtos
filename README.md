@@ -123,9 +123,15 @@ sudo juggernaught tools install --all
 Built in (always available, no API keys): logo concepts and the full logo set, brand guidelines
 PDF, social posts at every platform size, business cards (print-ready PDF), email signatures,
 logo vectorizing, brand guide, CSS brand check. Photo-style images, textures and icons are made with
-GPT Image in your own ChatGPT: ask in chat and you get an Open in ChatGPT button with the
-brand-aware prompt filled in; make it there and drop the image back into the chat. With an OpenAI
-API key saved, a Make it automatically button uses the Images API instead. PhotoCraft, VectorCraft, PdfCraft and impeccable install from their
+GPT Image in your own ChatGPT plan. Sign Codex in with your ChatGPT account once and ask in chat:
+the image is made in the background and shows up in the chat and Assets by itself.
+
+```bash
+juggernaught connect codex-images
+```
+
+Without Codex you get an Open in ChatGPT button with the brand-aware prompt filled in; make it there
+and drop the image back into the chat. An OpenAI API key (Settings) is a third option. PhotoCraft, VectorCraft, PdfCraft and impeccable install from their
 upstream releases; HyperFrames video needs Node 20+; Kokoro voice and open-design are not yet
 available as server binaries upstream.
 
@@ -160,9 +166,11 @@ A spare computer works the same; a UPS and an off-site backup target are strongl
    own login), Juggernaught never handles those credentials, and API-key providers
    (OpenRouter / Anthropic / OpenAI) are the default for anything resold or managed.
    Get a quick legal read before selling managed installs on subscriptions.
-2. **GPT Image by hand-off, not browser automation (decided).** The agent writes the prompt and
-   the owner makes the image in their own ChatGPT (one click opens it with the prompt filled in),
-   then drops it back into the chat. Driving ChatGPT with Playwright was tried and dropped:
+2. **GPT Image through Codex or hand-off, not browser automation (decided).** The agent writes the
+   prompt. With the official Codex CLI signed in to the owner's ChatGPT account, the image is made
+   headless and comes back by itself (Codex's own image tool, the owner's plan limits apply).
+   Otherwise the owner makes it in their own ChatGPT (one click opens it with the prompt filled in)
+   and drops it back into the chat. Driving ChatGPT with Playwright was tried and dropped:
    ChatGPT's Cloudflare check and Google sign-in both refuse automated browsers, getting past them
    would mean disguising the automation, and OpenAI's terms restrict automated access anyway. The
    OpenAI Images API key is the automatic option (billed to the key, paced: ≤ 60 an hour).

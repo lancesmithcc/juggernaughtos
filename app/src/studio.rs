@@ -285,7 +285,7 @@ pub async fn save_image_key(env: &SiteEnv, key: Option<String>, model: Option<St
 #[async_trait]
 impl Tool for GenerateImage {
     fn spec(&self) -> ToolSpec {
-        spec("generate_image", "Prepare ONE image (hero photo-style image, texture, icon, illustration, logo exploration) for the owner to make in their own ChatGPT (GPT Image). The brand's palette and imagery rules are written into the prompt for you. The owner gets an Open in ChatGPT button, makes the image there and drops it back into this chat; it then lands in Assets for review and you get a message naming it. Call once per image the owner needs (at most 3 per reply), then stop and tell the owner in one short sentence that the image is ready to make in ChatGPT. Never call again for the same image.",
+        spec("generate_image", "Make ONE image (hero photo-style image, texture, icon, illustration, logo exploration) with GPT Image in the owner's own ChatGPT plan. The brand's palette and imagery rules are written into the prompt for you. When Codex is signed in on this box the image is made automatically in the background (about a minute); otherwise the owner gets an Open in ChatGPT button and drops the result back here. Either way it lands in Assets for review and you get a message naming it. Call once per image the owner needs (at most 3 per reply), then stop and tell the owner in one short sentence that the image is on its way. Never call again for the same image.",
             json!({"type":"object","required":["prompt"],"properties":{
                 "prompt":{"type":"string","description":"what to show; the brand rules are added automatically"},
                 "title":{"type":"string","description":"short name for the asset, e.g. 'Homepage hero'"},
@@ -311,7 +311,11 @@ impl Tool for GenerateImage {
         let full = format!("{} {}", brand.image_prompt_preamble(), prompt);
         let id = crate::images::create_handoff(&self.0, &conversation, &full, kind, shape, &title).await.map_err(ToolError::Failed)?;
         Ok(ToolOutput {
-            summary: format!("Ready for the owner to make in ChatGPT: “{title}”. They'll drop the image back here; it then lands in Assets."),
+            summary: if crate::images::codex_ready(&self.0.cfg).await {
+                format!("Image “{title}” is being made automatically in the owner's ChatGPT (about a minute). It appears in this chat and in Assets by itself; the owner has nothing to do.")
+            } else {
+                format!("Image “{title}” is ready for the owner to make: they get an Open in ChatGPT button with the prompt filled in, then drop the image back here. It then lands in Assets.")
+            },
             files: vec![],
             data: json!({ "handoff": id }),
         })

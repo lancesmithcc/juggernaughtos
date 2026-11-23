@@ -37,7 +37,7 @@ async fn main() {
             #[arg(long)]
             socket: std::path::PathBuf,
         },
-        /// Connect an intelligence provider: claude, codex or openrouter.
+        /// Connect an intelligence provider: claude, codex or openrouter. `codex-images` signs Codex in for images only.
         Connect { provider: String },
         /// Print the one-time setup link for a fresh install.
         SetupUrl,
@@ -458,10 +458,10 @@ async fn main() {
         Cmd::Connect { provider } => {
             let (kind, login): (&str, Option<(&str, Vec<&str>)>) = match provider.as_str() {
                 "claude" => ("claude_code_cli", Some(("claude", vec![]))),
-                "codex" => ("codex_cli", Some(("codex", vec!["login"]))),
+                "codex" | "codex-images" => ("codex_cli", Some(("codex", vec!["login"]))),
                 "openrouter" => ("openrouter", None),
                 other => {
-                    eprintln!("Unknown provider `{other}`. Use claude, codex or openrouter.");
+                    eprintln!("Unknown provider `{other}`. Use claude, codex, codex-images or openrouter.");
                     std::process::exit(2);
                 }
             };
@@ -492,6 +492,11 @@ async fn main() {
                     std::io::stdin().read_line(&mut line).expect("stdin");
                     key = Some(line.trim().to_string());
                 }
+            }
+            if provider == "codex-images" {
+                // Images only: the chat keeps whichever intelligence it already uses.
+                println!("Codex is signed in. Images are now made automatically in your ChatGPT plan.");
+                return;
             }
             match save_provider(&state, kind, None, key).await {
                 Ok(msg) => println!("{msg}"),

@@ -1,4 +1,4 @@
-use crate::api::{get_overview, handoff_use_api, start_turn, ApprovalView, AssetCard, HandoffView, StreamEvent, ToolActivity};
+use crate::api::{get_overview, handoff_retry_codex, handoff_status, handoff_use_api, start_turn, ApprovalView, AssetCard, HandoffView, StreamEvent, ToolActivity};
 use crate::pages::assets::{ApprovalCard, AssetTile};
 use leptos::prelude::*;
 
@@ -220,28 +220,70 @@ fn Message(msg: Msg) -> impl IntoView {
     .into_any()
 }
 
-/// One image for the owner to make in their own ChatGPT, then drop back here.
+/// One image request. With Codex signed in it's made automatically (the card waits
+/// and fills itself in); otherwise, or if that fails, the owner makes it in ChatGPT
+/// and drops it back here.
 #[component]
 fn HandoffCard(item: HandoffView, assets: RwSignal<Vec<AssetCard>>) -> impl IntoView {
     let added = use_context::<HandoffAdded>();
     let done = RwSignal::new(item.status == "done");
+    let making = RwSignal::new(item.status == "making");
     let working = RwSignal::new(None::<&'static str>);
-    let msg = RwSignal::new(None::<String>);
+    let msg = RwSignal::new(item.note.clone().map(|n| format!("Couldn't make it automatically: {n}")));
     let over = RwSignal::new(false);
     let copied = RwSignal::new(false);
-    let (id, title, prompt, url, api) = (item.id.clone(), item.title.clone(), item.prompt.clone(), item.open_url.clone(), item.api_key_set);
+    let (id, title, prompt, url, api, codex) = (item.id.clone(), item.title.clone(), item.prompt.clone(), item.open_url.clone(), item.api_key_set, item.codex_ready);
     let finish = move |v: HandoffView| {
         working.set(None);
+        making.set(false);
+        if done.get_untracked() {
+            return;
+        }
         done.set(true);
         if let Some(a) = v.asset.clone() {
             let name = a.title.clone();
             let aid = a.id.clone();
             assets.update(|x| x.push(a));
             if let Some(HandoffAdded(s)) = added {
-                s.set(Some(format!("I added the image from ChatGPT for “{name}”. It's in Assets now (asset {aid}).")));
+                s.set(Some(format!("The image from ChatGPT for “{name}” is ready. It's in Assets now (asset {aid}).")));
             }
         }
     };
+    // While Codex works, check every few seconds until the image lands or it gives up.
+    let watch = {
+        let id = id.clone();
+        move || {
+            let id = id.clone();
+            leptos::task::spawn_local(async move {
+                let mut misses = 0;
+                loop {
+                    #[cfg(feature = "hydrate")]
+                    crate::client::sleep_ms(3000).await;
+                    match handoff_status(id.clone()).await {
+                        Ok(v) if v.status == "making" => misses = 0,
+                        Ok(v) if v.status == "done" => return finish(v),
+                        Ok(v) => {
+                            making.set(false);
+                            msg.set(Some(format!("Couldn't make it automatically: {}", v.note.unwrap_or_else(|| "unknown error".into()))));
+                            return;
+                        }
+                        Err(_) if misses < 20 => misses += 1,
+                        Err(e) => {
+                            making.set(false);
+                            msg.set(Some(e.to_string().replace("error running server function: ", "")));
+                            return;
+                        }
+                    }
+                    if done.get_untracked() {
+                        return;
+                    }
+                }
+            });
+        }
+    };
+    if making.get_untracked() {
+        watch();
+    }
     let take = {
         let id = id.clone();
         move |ev: leptos::wasm_bindgen::JsValue| {
@@ -290,37 +332,72 @@ fn HandoffCard(item: HandoffView, assets: RwSignal<Vec<AssetCard>>) -> impl Into
             });
         }
     };
+    let retry = {
+        let id = id.clone();
+        let watch = watch.clone();
+        move |_| {
+            let (id, watch) = (id.clone(), watch.clone());
+            msg.set(None);
+            leptos::task::spawn_local(async move {
+                match handoff_retry_codex(id).await {
+                    Ok(_) => {
+                        making.set(true);
+                        watch();
+                    }
+                    Err(e) => msg.set(Some(e.to_string().replace("error running server function: ", ""))),
+                }
+            });
+        }
+    };
     let input_id = format!("handoff-file-{id}");
-    let input_for = input_id.clone();
     view! {
         <div class="handoff" class:done=move || done.get()>
-            <Show when=move || !done.get() fallback=|| view! { <p class="handoff-done">"✓ Added to Assets"</p> }>
-                <div class="handoff-head">
-                    <span class="handoff-badge" aria-hidden="true">"GPT"</span>
-                    <div>
-                        <strong>{format!("Make “{title}” in ChatGPT")}</strong>
-                        <p>"1 · Open ChatGPT (the prompt is filled in and copied).  2 · Send it.  3 · Bring the image back here."</p>
+            {move || {
+                if done.get() {
+                    return view! { <p class="handoff-done">"✓ Added to Assets"</p> }.into_any();
+                }
+                if making.get() {
+                    return view! {
+                        <div class="handoff-head" role="status">
+                            <span class="handoff-badge" aria-hidden="true">"GPT"</span>
+                            <div>
+                                <strong><span class="spinner"></span>{format!("Making “{title}” in your ChatGPT…")}</strong>
+                                <p>"Usually under a minute. It shows up here and in Assets by itself; you can keep chatting or close this tab."</p>
+                            </div>
+                        </div>
+                    }.into_any();
+                }
+                let (t1, t2, t3) = (t1.clone(), t2.clone(), t3.clone());
+                let (open_copy, prompt_copy) = (open_copy.clone(), prompt_copy.clone());
+                view! {
+                    <div class="handoff-head">
+                        <span class="handoff-badge" aria-hidden="true">"GPT"</span>
+                        <div>
+                            <strong>{format!("Make “{title}” in ChatGPT")}</strong>
+                            <p>"1 · Open ChatGPT (the prompt is filled in and copied).  2 · Send it.  3 · Bring the image back here."</p>
+                        </div>
                     </div>
-                </div>
-                <div class="row-actions">
-                    <a class="btn primary" href=url.clone() target="_blank" rel="noopener noreferrer" on:click={ let p = open_copy.clone(); move |_| crate::client::copy(&p) }>"Open in ChatGPT ↗"</a>
-                    <button class="btn ghost" type="button" on:click={ let p = prompt_copy.clone(); move |_| { crate::client::copy(&p); copied.set(true); } }>{move || if copied.get() { "Copied" } else { "Copy prompt" }}</button>
-                    {api.then(|| view! { <button class="btn ghost" type="button" disabled=move || working.get().is_some() on:click=use_api.clone()>"Make it automatically"</button> })}
-                </div>
-                <details class="handoff-prompt"><summary>"See the prompt"</summary><p>{prompt.clone()}</p></details>
-                <label class="dropzone" class:over=move || over.get() for=input_for.clone() tabindex="0"
-                    on:dragover=move |ev: leptos::ev::DragEvent| { ev.prevent_default(); over.set(true); }
-                    on:dragleave=move |_| over.set(false)
-                    on:drop={ let t = t1.clone(); move |ev: leptos::ev::DragEvent| { ev.prevent_default(); over.set(false); t(leptos::wasm_bindgen::JsValue::from(ev)); } }
-                    on:paste={ let t = t2.clone(); move |ev: leptos::ev::ClipboardEvent| { ev.prevent_default(); t(leptos::wasm_bindgen::JsValue::from(ev)); } }>
-                    {move || match working.get() {
-                        Some(w) => view! { <span><span class="spinner"></span>{w}</span> }.into_any(),
-                        None => view! { <span><strong>"Drop the image here"</strong>" or click to choose it · paste with ⌘V"</span> }.into_any(),
-                    }}
-                </label>
-                <input id=input_id.clone() class="sr-only" type="file" accept="image/png,image/jpeg,image/webp,image/gif" on:change={ let t = t3.clone(); move |ev: leptos::ev::Event| t(leptos::wasm_bindgen::JsValue::from(ev)) }/>
-                {move || msg.get().map(|m| view! { <p class="hint err" role="alert">{m}</p> })}
-            </Show>
+                    <div class="row-actions">
+                        {codex.then(|| view! { <button class="btn primary" type="button" on:click=retry.clone()>"Try again automatically"</button> })}
+                        <a class=if codex { "btn ghost" } else { "btn primary" } href=url.clone() target="_blank" rel="noopener noreferrer" on:click=move |_| crate::client::copy(&open_copy)>"Open in ChatGPT ↗"</a>
+                        <button class="btn ghost" type="button" on:click=move |_| { crate::client::copy(&prompt_copy); copied.set(true); }>{move || if copied.get() { "Copied" } else { "Copy prompt" }}</button>
+                        {api.then(|| view! { <button class="btn ghost" type="button" disabled=move || working.get().is_some() on:click=use_api.clone()>"Use my API key"</button> })}
+                    </div>
+                    <details class="handoff-prompt"><summary>"See the prompt"</summary><p>{prompt.clone()}</p></details>
+                    <label class="dropzone" class:over=move || over.get() for=input_id.clone() tabindex="0"
+                        on:dragover=move |ev: leptos::ev::DragEvent| { ev.prevent_default(); over.set(true); }
+                        on:dragleave=move |_| over.set(false)
+                        on:drop=move |ev: leptos::ev::DragEvent| { ev.prevent_default(); over.set(false); t1(leptos::wasm_bindgen::JsValue::from(ev)); }
+                        on:paste=move |ev: leptos::ev::ClipboardEvent| { ev.prevent_default(); t2(leptos::wasm_bindgen::JsValue::from(ev)); }>
+                        {move || match working.get() {
+                            Some(w) => view! { <span><span class="spinner"></span>{w}</span> }.into_any(),
+                            None => view! { <span><strong>"Drop the image here"</strong>" or click to choose it · paste with ⌘V"</span> }.into_any(),
+                        }}
+                    </label>
+                    <input id=input_id.clone() class="sr-only" type="file" accept="image/png,image/jpeg,image/webp,image/gif" on:change=move |ev: leptos::ev::Event| t3(leptos::wasm_bindgen::JsValue::from(ev))/>
+                }.into_any()
+            }}
+            {move || msg.get().filter(|_| !done.get()).map(|m| view! { <p class="hint err" role="alert">{m}</p> })}
         </div>
     }
 }

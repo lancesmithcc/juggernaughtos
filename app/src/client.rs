@@ -40,6 +40,17 @@ pub fn image_in(ev: &wasm_bindgen::JsValue) -> Result<Option<wasm_bindgen::JsVal
     Ok(Some(f))
 }
 
+/// Wait in the browser without blocking (for polling).
+#[cfg(feature = "hydrate")]
+pub async fn sleep_ms(ms: i32) {
+    let p = js_sys::Promise::new(&mut |resolve, _| {
+        if let Some(w) = web_sys::window() {
+            let _ = w.set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, ms);
+        }
+    });
+    let _ = wasm_bindgen_futures::JsFuture::from(p).await;
+}
+
 /// Upload the owner's image for a hand-off. Ok(view) or a message to show.
 #[cfg(feature = "hydrate")]
 pub async fn upload_handoff(id: &str, file: &wasm_bindgen::JsValue) -> Result<crate::api::HandoffView, String> {
