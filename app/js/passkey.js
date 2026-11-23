@@ -88,8 +88,12 @@ export function passkeyHere() {
   }
 }
 
-export async function passkeyLogin() {
+// `anyDevice`: also try passkeys this browser doesn't know about (a phone via QR code,
+// another keychain). Without it, a browser that never made or used a Juggernaught
+// passkey skips the system dialog (which would only offer a QR code).
+export async function passkeyLogin(anyDevice) {
   if (!passkeySupported()) return "This browser doesn't support passkeys.";
+  if (!anyDevice && !passkeyHere()) return "not_here";
   try {
     const { state_id, options } = await post("/auth/passkey/login/start");
     const pk = options.publicKey;

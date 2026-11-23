@@ -33,27 +33,30 @@ pub fn LoginPage() -> impl IntoView {
     });
     let clean = |e: ServerFnError| e.to_string().replace("error running server function: ", "");
 
-    let passkey = move |_| {
+    let try_passkey = move |any_device: bool| {
         working.set(true);
         msg.set(None);
         leptos::task::spawn_local(async move {
-            let r = crate::client::login_passkey().await;
+            let r = crate::client::login_passkey(any_device).await;
             working.set(false);
             if r == "ok" {
                 crate::client::go("/");
             } else if r.contains("No passkeys") || r == "not_here" {
-                // First time: one email link, then the workspace offers to add a passkey.
+                // First time in this browser: one email link, then the workspace offers a passkey.
                 mode.set(Mode::Link);
-                note.set(Some(if r == "not_here" {
-                    "No passkey for Juggernaught in this browser (or it was cancelled). Passkeys live in the browser or keychain they were made in. Sign in with an email link here once; right after, you'll be asked to add your fingerprint in this browser.".to_string()
+                note.set(Some(if r.contains("No passkeys") {
+                    "No passkey on this account yet. Sign in with an email link this once; right after, you'll be asked to add your fingerprint."
+                } else if any_device {
+                    "That didn't work. Sign in with an email link here once; right after, you'll be asked to add your fingerprint in this browser."
                 } else {
-                    "No passkey on this account yet. Sign in with an email link this once; right after, you'll be asked to add your fingerprint.".to_string()
-                }));
+                    "This browser doesn't have your passkey yet (passkeys stay in the browser or keychain they were made in). Sign in with an email link here once; right after, you'll be asked to add your fingerprint, and from then on it's just Touch ID."
+                }.to_string()));
             } else {
                 msg.set(Some(r));
             }
         });
     };
+    let passkey = move |_| try_passkey(false);
 
     let submit_code = move |ev: leptos::ev::SubmitEvent| {
         ev.prevent_default();
@@ -143,7 +146,10 @@ pub fn LoginPage() -> impl IntoView {
                             </Show>
                         }.into_any(),
                     }}
-                    {move || note.get().filter(|_| mode.get() == Mode::Link).map(|n| view! { <p class="hint" role="status">{n}</p> })}
+                    {move || note.get().filter(|_| mode.get() == Mode::Link).map(|n| view! {
+                        <p class="hint" role="status">{n}</p>
+                        <button class="linkish" type="button" on:click=move |_| try_passkey(true)>"Use a passkey from my phone or another device"</button>
+                    })}
                     {move || msg.get().map(|m| view! { <p class="error" role="alert">{m}</p> })}
                     <div class="login-foot">
                         <Show when=move || mode.get() != Mode::Choose>

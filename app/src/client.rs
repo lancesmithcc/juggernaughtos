@@ -11,7 +11,7 @@ mod js {
         #[wasm_bindgen(js_name = passkeyRegister)]
         pub fn passkey_register(label: &str) -> js_sys::Promise;
         #[wasm_bindgen(js_name = passkeyLogin)]
-        pub fn passkey_login() -> js_sys::Promise;
+        pub fn passkey_login(any_device: bool) -> js_sys::Promise;
         #[wasm_bindgen(js_name = passkeyHere)]
         pub fn passkey_here() -> bool;
     }
@@ -77,13 +77,17 @@ pub async fn register_passkey(label: String) -> String {
     }
 }
 
-pub async fn login_passkey() -> String {
+/// `any_device`: also offer passkeys this browser doesn't hold (phone QR code).
+pub async fn login_passkey(any_device: bool) -> String {
     #[cfg(feature = "hydrate")]
     {
-        return wasm_bindgen_futures::JsFuture::from(js::passkey_login()).await.ok().and_then(|v| v.as_string()).unwrap_or_else(|| "Passkey sign-in failed.".into());
+        return wasm_bindgen_futures::JsFuture::from(js::passkey_login(any_device)).await.ok().and_then(|v| v.as_string()).unwrap_or_else(|| "Passkey sign-in failed.".into());
     }
     #[allow(unreachable_code)]
-    "unavailable".into()
+    {
+        let _ = any_device;
+        "unavailable".into()
+    }
 }
 
 /// This browser made or used a Juggernaught passkey before.
