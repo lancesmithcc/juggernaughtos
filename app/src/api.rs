@@ -254,7 +254,9 @@ pub async fn complete_setup(input: WizardInput) -> Result<SetupResult, ServerFnE
 }
 
 #[server]
-pub async fn request_magic_link(email: String) -> Result<(), ServerFnError> {
+/// Returns the link only in development, with no mail server, for a request from this
+/// machine (so a local install can sign in without email). Otherwise `None`.
+pub async fn request_magic_link(email: String) -> Result<Option<String>, ServerFnError> {
     let st = ctx::state()?;
     let ip = ctx::ip().await;
     if st.sign_in_blocked(&ip, None) {
@@ -262,8 +264,9 @@ pub async fn request_magic_link(email: String) -> Result<(), ServerFnError> {
     }
     // Each request counts against the IP so the form can't be used to spam inboxes.
     st.sign_in_failed(&ip, None, "magic_link_requested");
-    crate::server::request_magic_link(&st, &email).await;
-    Ok(())
+    let link = crate::server::request_magic_link(&st, &email).await;
+    let local = ip.parse::<std::net::IpAddr>().is_ok_and(|a| a.is_loopback());
+    Ok(link.filter(|_| st.cfg.dev && local))
 }
 
 #[cfg(feature = "ssr")]

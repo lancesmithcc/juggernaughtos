@@ -878,11 +878,16 @@ fn is_hex(s: &str) -> bool {
     s.len() == 7 && s.starts_with('#') && s[1..].chars().all(|c| c.is_ascii_hexdigit())
 }
 
-pub async fn request_magic_link(st: &AppState, email: &str) {
-    let Ok(Some(uid)) = jugg_auth::find_user_by_email(&st.pool, &st.ring, email).await else { return };
+/// Issue and send a sign-in link. Returns the link itself only in development with no
+/// mail server configured (the caller shows it to a request from this machine).
+pub async fn request_magic_link(st: &AppState, email: &str) -> Option<String> {
+    let Ok(Some(uid)) = jugg_auth::find_user_by_email(&st.pool, &st.ring, email).await else { return None };
     let token = match jugg_auth::magic::issue(&st.pool, &uid).await {
         Ok(t) => t,
-        Err(e) => return tracing::error!(error = %e, "magic link issue failed"),
+        Err(e) => {
+            tracing::error!(error = %e, "magic link issue failed");
+            return None;
+        }
     };
     let link = format!("{}/auth/magic/{token}", admin_origin(&st.cfg));
     let business = st.brand.read().await.name.clone();
@@ -898,9 +903,13 @@ pub async fn request_magic_link(st: &AppState, email: &str) {
                 tracing::error!(error = %e, "magic link email failed");
             }
         }
-        None if st.cfg.dev => tracing::info!("dev magic link (no SMTP configured): {link}"),
+        None if st.cfg.dev => {
+            tracing::info!("dev magic link (no SMTP configured): {link}");
+            return Some(link);
+        }
         None => tracing::error!("magic link requested but SMTP is not configured ([mail] in juggernaught.toml)"),
     }
+    None
 }
 
 fn html_escape(s: &str) -> String {

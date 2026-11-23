@@ -18,6 +18,9 @@ pub fn LoginPage() -> impl IntoView {
     let msg = RwSignal::new(None::<String>);
     let working = RwSignal::new(false);
     let sent = RwSignal::new(false);
+    // Development without a mail server: the link, shown right here.
+    let dev_link = RwSignal::new(None::<String>);
+    let note = RwSignal::new(None::<String>);
     let query = use_query_map();
     Effect::new(move |_| {
         let e = query.with(|q| q.get("e"));
@@ -38,6 +41,10 @@ pub fn LoginPage() -> impl IntoView {
             working.set(false);
             if r == "ok" {
                 crate::client::go("/");
+            } else if r.contains("No passkeys") {
+                // First time: one email link, then the workspace offers to add a passkey.
+                mode.set(Mode::Link);
+                note.set(Some("No passkey on this account yet. Sign in with an email link this once; right after, you'll be asked to add your fingerprint.".into()));
             } else {
                 msg.set(Some(r));
             }
@@ -68,7 +75,10 @@ pub fn LoginPage() -> impl IntoView {
             let r = request_magic_link(e).await;
             working.set(false);
             match r {
-                Ok(()) => sent.set(true),
+                Ok(link) => {
+                    dev_link.set(link);
+                    sent.set(true);
+                }
                 Err(err) => msg.set(Some(clean(err))),
             }
         });
@@ -119,10 +129,17 @@ pub fn LoginPage() -> impl IntoView {
                                     <button class="btn primary" type="submit" disabled=move || working.get()>"Email me a link"</button>
                                 </form>
                             }>
-                                <p class="sent" role="status">"If that address belongs to this workspace, a sign-in link is on its way. It works once and expires in 15 minutes."</p>
+                                {move || match dev_link.get() {
+                                    Some(l) => view! {
+                                        <p class="sent" role="status">"Development mode, no mail server set up, so here's your link (only shown on this computer)."</p>
+                                        <a class="btn primary" href=l rel="external">"Sign in now"</a>
+                                    }.into_any(),
+                                    None => view! { <p class="sent" role="status">"If that address belongs to this workspace, a sign-in link is on its way. It works once and expires in 15 minutes."</p> }.into_any(),
+                                }}
                             </Show>
                         }.into_any(),
                     }}
+                    {move || note.get().filter(|_| mode.get() == Mode::Link).map(|n| view! { <p class="hint" role="status">{n}</p> })}
                     {move || msg.get().map(|m| view! { <p class="error" role="alert">{m}</p> })}
                     <div class="login-foot">
                         <Show when=move || mode.get() != Mode::Choose>
