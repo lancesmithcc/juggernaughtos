@@ -130,6 +130,9 @@ the image is made in the background and shows up in the chat and Assets by itsel
 juggernaught connect codex-images
 ```
 
+On a server (or over SSH) it signs in with a device code: Codex shows a link and a short code, and
+you enter the code on chatgpt.com from your phone or laptop. `--device-code` forces this anywhere.
+
 Without Codex you get an Open in ChatGPT button with the brand-aware prompt filled in; make it there
 and drop the image back into the chat. An OpenAI API key (Settings) is a third option.
 

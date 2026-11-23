@@ -205,6 +205,22 @@ fn codex_command(cfg: &jugg_core::Config, cwd: &std::path::Path) -> tokio::proce
     c
 }
 
+/// Should `codex login` use a device code (shown here, entered on chatgpt.com from
+/// any phone or laptop) instead of opening a browser on this machine? Yes on servers,
+/// over SSH, and on Linux without a desktop.
+pub fn headless_login(dev: bool, has_var: impl Fn(&str) -> bool) -> bool {
+    !dev || has_var("SSH_CONNECTION") || has_var("SSH_TTY") || (cfg!(target_os = "linux") && !has_var("DISPLAY") && !has_var("WAYLAND_DISPLAY"))
+}
+
+/// Arguments for the Codex sign-in.
+pub fn codex_login_args(device_code: bool) -> Vec<&'static str> {
+    if device_code {
+        vec!["login", "--device-auth"]
+    } else {
+        vec!["login"]
+    }
+}
+
 static CODEX_READY: std::sync::Mutex<Option<(i64, bool)>> = std::sync::Mutex::new(None);
 static CODEX_ONE_AT_A_TIME: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(1);
 
@@ -533,6 +549,18 @@ pub async fn upload(State(st): State<AppState>, Path(id): Path<String>, headers:
 mod tests {
     use super::*;
     const L: Limits = Limits { min_gap_secs: 90, per_hour: 10, per_day: 40, max_wait_secs: 240 };
+
+    #[test]
+    fn device_code_sign_in_on_servers_and_over_ssh() {
+        let none = |_: &str| false;
+        assert!(headless_login(false, none), "production boxes never have a browser");
+        assert!(headless_login(true, |v| v == "SSH_CONNECTION"), "ssh into a dev box");
+        if !cfg!(target_os = "linux") {
+            assert!(!headless_login(true, none), "local desktop keeps the browser sign-in");
+        }
+        assert_eq!(codex_login_args(true), ["login", "--device-auth"]);
+        assert_eq!(codex_login_args(false), ["login"]);
+    }
 
     #[test]
     fn reads_codex_run() {

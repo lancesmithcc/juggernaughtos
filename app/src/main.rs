@@ -38,7 +38,12 @@ async fn main() {
             socket: std::path::PathBuf,
         },
         /// Connect an intelligence provider: claude, codex or openrouter. `codex-images` signs Codex in for images only.
-        Connect { provider: String },
+        Connect {
+            provider: String,
+            /// Sign in with a code entered on another device (default on servers and over SSH).
+            #[arg(long)]
+            device_code: bool,
+        },
         /// Print the one-time setup link for a fresh install.
         SetupUrl,
         /// Print health of crypto, database, provider and tools.
@@ -455,10 +460,11 @@ async fn main() {
             };
             jugg_tools::mcp::serve_stdio(state.registry.clone(), ctx).await.expect("mcp stdio");
         }
-        Cmd::Connect { provider } => {
+        Cmd::Connect { provider, device_code } => {
+            let device_code = device_code || juggernaught::images::headless_login(state.cfg.dev, |v| std::env::var_os(v).is_some());
             let (kind, login): (&str, Option<(&str, Vec<&str>)>) = match provider.as_str() {
                 "claude" => ("claude_code_cli", Some(("claude", vec![]))),
-                "codex" | "codex-images" => ("codex_cli", Some(("codex", vec!["login"]))),
+                "codex" | "codex-images" => ("codex_cli", Some(("codex", juggernaught::images::codex_login_args(device_code)))),
                 "openrouter" => ("openrouter", None),
                 other => {
                     eprintln!("Unknown provider `{other}`. Use claude, codex, codex-images or openrouter.");
@@ -470,6 +476,8 @@ async fn main() {
                 Some((bin, args)) => {
                     if bin == "claude" {
                         println!("Starting Claude Code. Type /login, finish signing in, then /exit.");
+                    } else if device_code {
+                        println!("Codex will show a short code and a link. Open the link on your phone or laptop, sign in to ChatGPT, and enter the code.");
                     }
                     // The vendor's own login flow: Juggernaught never sees these credentials.
                     // On servers the login lives in the agent's own home (what the sandbox sees).
@@ -483,6 +491,9 @@ async fn main() {
                     let status = c.status();
                     if !status.map(|s| s.success()).unwrap_or(false) {
                         eprintln!("`{bin}` is not installed or login did not finish.");
+                        if bin == "codex" && device_code {
+                            eprintln!("If ChatGPT refused the code, check its security settings allow signing in to Codex with a device code, then try again.");
+                        }
                         std::process::exit(1);
                     }
                 }
@@ -495,7 +506,12 @@ async fn main() {
             }
             if provider == "codex-images" {
                 // Images only: the chat keeps whichever intelligence it already uses.
-                println!("Codex is signed in. Images are now made automatically in your ChatGPT plan.");
+                if juggernaught::images::codex_ready(&state.cfg).await {
+                    println!("Codex is signed in with your ChatGPT account. Images are now made automatically in your ChatGPT plan.");
+                } else {
+                    eprintln!("Codex is installed, but it isn't signed in with a ChatGPT account (an API-key sign-in doesn't count). Run this again and choose ChatGPT.");
+                    std::process::exit(1);
+                }
                 return;
             }
             match save_provider(&state, kind, None, key).await {
