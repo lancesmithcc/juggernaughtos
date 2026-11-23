@@ -130,3 +130,28 @@ fn odd_inputs_never_panic() {
     let many = Settings { colors: Some(256), ..Settings::default() };
     assert!(trace_rgba(&noise, &many).is_ok());
 }
+
+/// Off-white background with a dark ring (like the letter O): the counter is background.
+fn ring_on_paper() -> RgbaImage {
+    RgbaImage::from_fn(160, 160, |x, y| {
+        let r = ((x as f32 - 80.0).powi(2) + (y as f32 - 80.0).powi(2)).sqrt();
+        if (25.0..55.0).contains(&r) {
+            Rgba([24, 22, 20, 255])
+        } else {
+            Rgba([248, 245, 240, 255])
+        }
+    })
+}
+
+#[test]
+fn knockout_clears_enclosed_background_too() {
+    use vectorverter_core::Background;
+    let paper = |svg: &str| svg.lines().any(|l| l.contains("fill=\"#f8f5f0\"") || l.contains("fill=\"#f7f5f0\"") || l.contains("fill=\"#f8f4f0\""));
+    let keep_counter = trace_rgba(&ring_on_paper(), &Settings { background: Background::Transparent, ..Preset::Logo.settings() }).unwrap();
+    assert!(paper(&keep_counter.svg), "transparent mode keeps the enclosed counter: {}", keep_counter.svg);
+    let knocked = trace_rgba(&ring_on_paper(), &Settings { background: Background::Knockout, ..Preset::Logo.settings() }).unwrap();
+    assert!(!paper(&knocked.svg), "knockout drops it: {}", knocked.svg);
+    assert_eq!(knocked.stats.colors, 1, "{:?}", knocked.palette);
+    let ring = knocked.svg.lines().find(|l| l.contains("<path")).expect("ring path");
+    assert_eq!(ring.matches('M').count(), 2, "ring keeps its hole: {ring}");
+}

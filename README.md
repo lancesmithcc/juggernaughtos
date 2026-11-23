@@ -131,7 +131,13 @@ juggernaught connect codex-images
 ```
 
 Without Codex you get an Open in ChatGPT button with the brand-aware prompt filled in; make it there
-and drop the image back into the chat. An OpenAI API key (Settings) is a third option. PhotoCraft, VectorCraft, PdfCraft and impeccable install from their
+and drop the image back into the chat. An OpenAI API key (Settings) is a third option.
+
+Approve a logo image (in Assets or right in the chat) and Vectorverter 5000 traces it, drops the
+background (letter counters included) and makes the full set: SVG, print PDF and EPS, plus PNG and
+WebP at 4000 px and 1000 px. It becomes the brand logo for the website header and favicon.
+
+PhotoCraft, VectorCraft, PdfCraft and impeccable install from their
 upstream releases; HyperFrames video needs Node 20+; Kokoro voice and open-design are not yet
 available as server binaries upstream.
 

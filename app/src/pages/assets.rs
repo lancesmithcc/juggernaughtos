@@ -1,6 +1,6 @@
 //! Asset tiles (in chat and in the library) and the Assets panel.
 
-use crate::api::{decide_approval, decide_asset, list_assets, list_jobs, ApprovalView, AssetCard};
+use crate::api::{decide_approval, decide_asset, finish_logo, list_assets, list_jobs, ApprovalView, AssetCard};
 use leptos::prelude::*;
 
 fn label(kind: &str) -> String {
@@ -49,13 +49,23 @@ fn icon(mime: &str) -> &'static str {
 pub fn AssetTile(card: AssetCard) -> impl IntoView {
     let card = RwSignal::new(card);
     let working = RwSignal::new(false);
+    // Approving a logo image makes the whole file set (vector, print, screen).
+    let pack = RwSignal::new(None::<Result<Vec<AssetCard>, String>>);
+    let making = RwSignal::new(false);
     let decide = move |approve: bool| {
         working.set(true);
         let id = card.get_untracked().id;
         leptos::task::spawn_local(async move {
             let reason = (approve && card.get_untracked().status == "rejected").then(|| "Owner chose to use it despite the brand check".to_string());
-            if let Ok(c) = decide_asset(id, approve, reason).await {
+            if let Ok(c) = decide_asset(id.clone(), approve, reason).await {
+                let raster_logo = approve && c.kind == "logo" && c.mime.starts_with("image/") && !c.mime.contains("svg");
                 card.set(c);
+                if raster_logo {
+                    making.set(true);
+                    let r = finish_logo(id).await.map_err(|e| e.to_string().replace("error running server function: ", ""));
+                    making.set(false);
+                    pack.set(Some(r));
+                }
             }
             working.set(false);
         });
@@ -93,6 +103,23 @@ pub fn AssetTile(card: AssetCard) -> impl IntoView {
                             })}
                         </div>
                     </div>
+                    {move || making.get().then(|| view! {
+                        <p class="logo-pack-status" role="status"><span class="spinner"></span>"Vectorizing and making your logo files…"</p>
+                    })}
+                    {move || pack.get().map(|r| match r {
+                        Ok(files) => view! {
+                            <div class="logo-pack">
+                                <p class="ok-line">"Your logo files are ready, and it's now your brand logo."</p>
+                                <ul>
+                                    {files.into_iter().map(|f| {
+                                        let label = f.title.rsplit(" · ").next().unwrap_or(&f.title).to_string();
+                                        view! { <li><a class="btn ghost small" href=f.url.clone() download="">{label}</a></li> }
+                                    }).collect_view()}
+                                </ul>
+                            </div>
+                        }.into_any(),
+                        Err(e) => view! { <p class="hint err" role="alert">{format!("Couldn't make the logo files: {e}")}</p> }.into_any(),
+                    })}
                 </article>
             }
         }}

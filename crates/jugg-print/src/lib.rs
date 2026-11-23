@@ -8,6 +8,8 @@
 
 mod book;
 mod card;
+mod eps;
+pub use eps::eps_from_svg;
 pub mod logo;
 mod signature;
 mod social;
@@ -137,6 +139,85 @@ pub fn png_from_svg(svg: &str, scale: f32) -> Result<Vec<u8>> {
     pixmap.encode_png().map_err(|e| PrintError::Render(e.to_string()))
 }
 
+/// SVG → PNG whose longest side is `max_px` (transparent where the SVG is).
+pub fn png_fit(svg: &str, max_px: u32) -> Result<Vec<u8>> {
+    let t = tree(svg)?;
+    let long = t.size().width().max(t.size().height());
+    if long <= 0.0 {
+        return Err(PrintError::Render("empty size".into()));
+    }
+    png_from_svg(svg, max_px as f32 / long)
+}
+
+/// Crop an SVG to its artwork plus `margin` (share of the longer side). Only for
+/// SVGs whose root is `width=W height=H viewBox="0 0 W H"` (what Vectorverter
+/// writes); anything else comes back unchanged.
+pub fn trim_to_artwork(svg: &str, margin: f32) -> Result<String> {
+    let Some(start) = svg.find("<svg") else { return Ok(svg.to_string()) };
+    let Some(end) = svg[start..].find('>').map(|e| start + e) else { return Ok(svg.to_string()) };
+    let root = &svg[start..end];
+    let attr = |name: &str| -> Option<f32> {
+        let key = format!(" {name}=\"");
+        let i = root.find(&key)? + key.len();
+        root[i..].split('"').next()?.trim().parse().ok()
+    };
+    let (Some(w), Some(h)) = (attr("width"), attr("height")) else { return Ok(svg.to_string()) };
+    if !root.contains(&format!("viewBox=\"0 0 {} {}\"", fmt_num(w), fmt_num(h))) {
+        return Ok(svg.to_string());
+    }
+    let bb = tree(svg)?.root().abs_stroke_bounding_box();
+    if !(bb.width() > 0.0 && bb.height() > 0.0) {
+        return Ok(svg.to_string());
+    }
+    let pad = bb.width().max(bb.height()) * margin;
+    let (x, y, vw, vh) = (bb.x() - pad, bb.y() - pad, bb.width() + 2.0 * pad, bb.height() + 2.0 * pad);
+    let new_root = format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" version=\"1.1\" width=\"{}\" height=\"{}\" viewBox=\"{} {} {} {}\"",
+        fmt_num(vw.round()), fmt_num(vh.round()), fmt_num(x), fmt_num(y), fmt_num(vw), fmt_num(vh)
+    );
+    Ok(format!("{}{}{}", &svg[..start], new_root, &svg[end..]))
+}
+
+fn fmt_num(v: f32) -> String {
+    let s = format!("{v:.2}");
+    s.trim_end_matches('0').trim_end_matches('.').to_string()
+}
+
+/// A logo as a one-page vector PDF, longest side 8 inches.
+pub fn logo_pdf(svg: &str, title: &str) -> Result<Vec<u8>> {
+    let t = tree(svg)?;
+    let (w, h) = (t.size().width(), t.size().height());
+    if !(w > 0.0 && h > 0.0) {
+        return Err(PrintError::Render("empty size".into()));
+    }
+    let k = 576.0 / w.max(h);
+    pdf_from_svgs(&[svg.to_string()], w * k, h * k, 0.0, title)
+}
+
 pub(crate) fn esc(s: &str) -> String {
     s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&#39;")
 }
+
+#[cfg(test)]
+mod logo_file_tests {
+    use super::*;
+
+    #[test]
+    fn trims_to_the_artwork() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="200" height="100" viewBox="0 0 200 100"><rect x="50" y="20" width="100" height="60" fill="#123456"/></svg>"##;
+        let out = trim_to_artwork(svg, 0.0).unwrap();
+        assert!(out.contains(r#"viewBox="50 20 100 60""#), "{out}");
+        assert!(out.contains(r#"width="100" height="60""#));
+        let other = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="5" height="5"/></svg>"#;
+        assert_eq!(trim_to_artwork(other, 0.1).unwrap(), other, "unknown layouts are left alone");
+    }
+
+    #[test]
+    fn logo_pdf_and_pngs() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100"><rect width="200" height="100" fill="#123456"/></svg>"##;
+        assert!(logo_pdf(svg, "Logo").unwrap().starts_with(b"%PDF"));
+        let png = png_fit(svg, 1000).unwrap();
+        assert_eq!(&png[1..4], b"PNG");
+    }
+}
+

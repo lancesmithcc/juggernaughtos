@@ -2355,6 +2355,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
+ "vectorverter-core",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",

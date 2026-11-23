@@ -388,6 +388,10 @@ async fn view(st: &AppState, row: HandoffRow) -> crate::api::HandoffView {
         Some(a) => crate::assets::card(st, a).await,
         None => None,
     };
+    let file = match &asset_id {
+        Some(a) => sqlx::query_scalar::<_, String>("SELECT sha256 FROM assets WHERE id = ?").bind(a).fetch_optional(&st.pool).await.ok().flatten().map(|sha| handoff_file_name(&sha)),
+        None => None,
+    };
     crate::api::HandoffView {
         open_url: chatgpt_url(&prompt),
         id,
@@ -399,6 +403,7 @@ async fn view(st: &AppState, row: HandoffRow) -> crate::api::HandoffView {
         note,
         api_key_set: crate::studio::image_key(&st.site).await.is_some(),
         codex_ready: codex_ready(&st.cfg).await,
+        file,
     }
 }
 
@@ -452,6 +457,10 @@ pub async fn retry_codex(st: &AppState, user: &str, id: &str) -> Result<crate::a
     status(st, user, id).await
 }
 
+fn handoff_file_name(sha: &str) -> String {
+    format!("chatgpt-{}.png", &sha[..sha.len().min(10)])
+}
+
 /// Check, clean (re-encode as PNG, which drops metadata) and file the owner's image
 /// under the request, through the same brand gate as everything else.
 pub async fn attach(st: &AppState, user: &str, id: &str, bytes: &[u8]) -> Result<crate::api::HandoffView, String> {
@@ -467,7 +476,7 @@ pub async fn attach(st: &AppState, user: &str, id: &str, bytes: &[u8]) -> Result
     let png = clean_image(bytes)?;
     let job = st.cfg.data_dir.join("jobs").join(&conversation);
     std::fs::create_dir_all(&job).map_err(|e| e.to_string())?;
-    let name = format!("chatgpt-{}.png", &jugg_crypto::sha256_hex(&png)[..10]);
+    let name = handoff_file_name(&jugg_crypto::sha256_hex(&png));
     let path = job.join(&name);
     std::fs::write(&path, &png).map_err(|e| e.to_string())?;
     let kind: jugg_core::AssetKind = serde_json::from_value(json!(kind)).unwrap_or(jugg_core::AssetKind::Image);

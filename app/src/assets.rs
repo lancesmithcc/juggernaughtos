@@ -27,6 +27,7 @@ pub fn mime_for(ext: &str) -> &'static str {
         "jpg" | "jpeg" => "image/jpeg",
         "webp" => "image/webp",
         "svg" => "image/svg+xml",
+        "eps" => "application/postscript",
         "mp4" => "video/mp4",
         "webm" => "video/webm",
         "wav" => "audio/wav",

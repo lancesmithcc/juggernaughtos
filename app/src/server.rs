@@ -124,6 +124,7 @@ impl AppState {
         registry.register(crate::site::SiteRollback(site.clone()));
         registry.register(crate::studio::LogoConcepts(site.clone()));
         registry.register(crate::studio::AdoptLogo(site.clone()));
+        registry.register(crate::studio::LogoFiles(site.clone()));
         registry.register(crate::studio::SocialPost(site.clone()));
         registry.register(crate::studio::BrandBook(site.clone()));
         registry.register(crate::studio::GenerateImage(site.clone()));

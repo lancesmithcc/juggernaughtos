@@ -94,6 +94,9 @@ pub enum Background {
     Keep,
     /// Drop the dominant border colour, giving a transparent background.
     Transparent,
+    /// Like `Transparent`, and also knock that colour out where it's enclosed
+    /// (letter counters, gaps inside a mark): for logos drawn on a plain background.
+    Knockout,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -370,7 +373,8 @@ pub fn trace_rgba(img: &RgbaImage, settings: &Settings) -> Result<TraceOutput, T
         &segment::SegmentParams {
             min_area: (orig_min_area * sc2).max(0.75 * sc2),
             sliver_thickness: scale as f32 * lerp(1.8, 0.9, s.detail),
-            remove_background: s.background == Background::Transparent,
+            remove_background: s.background != Background::Keep,
+            knockout: s.background == Background::Knockout,
             dot_min_area: 2.5 * sc2,
         },
     );

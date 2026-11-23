@@ -581,6 +581,16 @@ fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: 10px; }
 .handoff-head strong .spinner { margin-right: 8px; vertical-align: -2px; }
 
 /* Juggernaught's own mark (tree of life), wherever the product signs itself. */
-.mark-logo { display: block; width: 30px; height: 30px; flex: none; }
-.setup-head .mark-logo { width: 48px; height: 48px; }
-.avatar.avatar-logo { background: none; padding: 0; object-fit: contain; }
+.mark-logo { display: block; width: 36px; height: 36px; flex: none; }
+.setup-head .mark-logo { width: 72px; height: 72px; }
+.avatar.avatar-logo { width: 32px; height: 32px; margin-top: 0; background: none; padding: 0; object-fit: contain; }
+.hero-logo { display: block; width: 96px; height: 96px; margin: 0 auto 18px; }
+@media (max-width: 640px) {
+  .hero-logo { width: 72px; height: 72px; }
+  .setup-head .mark-logo { width: 56px; height: 56px; }
+}
+
+/* An approved logo's file set. */
+.logo-pack-status { display: flex; align-items: center; gap: 8px; margin: 0; padding: 0 14px 14px; color: var(--ink-soft); font-size: 13px; }
+.logo-pack { display: grid; gap: 8px; padding: 0 14px 14px; }
+.logo-pack ul { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }

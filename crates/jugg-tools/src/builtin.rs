@@ -21,7 +21,7 @@ impl Tool for Vectorize {
     fn spec(&self) -> ToolSpec {
         ToolSpec {
             name: "vectorize".into(),
-            description: "Trace a raster image (PNG/JPEG/WebP) into a clean, editable SVG. Use for logos once the owner has picked one. Optionally restrict to brand palette colours.".into(),
+            description: "Trace a raster image file in this chat's job folder (PNG/JPEG/WebP) into a clean, editable SVG. Give the exact file name from the message that named it. For a logo the owner chose, use finish_logo instead: it also makes the PDF, EPS, PNG and WebP files. Optionally restrict to brand palette colours.".into(),
             input_schema: json!({
                 "type": "object",
                 "required": ["input"],
@@ -39,6 +39,12 @@ impl Tool for Vectorize {
 
     async fn run(&self, args: Value, ctx: &ToolContext) -> Result<ToolOutput, ToolError> {
         let input = job_path(ctx, args["input"].as_str().ok_or_else(|| ToolError::Args("input is required".into()))?)?;
+        if !input.is_file() {
+            let have: Vec<String> = std::fs::read_dir(&ctx.job_dir)
+                .map(|rd| rd.flatten().filter_map(|e| e.file_name().into_string().ok()).filter(|n| [".png", ".jpg", ".jpeg", ".webp"].iter().any(|x| n.to_ascii_lowercase().ends_with(x))).collect())
+                .unwrap_or_default();
+            return Err(ToolError::Args(format!("no file named {:?} here; images in this chat: {}", args["input"].as_str().unwrap_or_default(), if have.is_empty() { "none".into() } else { have.join(", ") })));
+        }
         let out_rel = args["output"].as_str().map(str::to_string).unwrap_or_else(|| {
             std::path::Path::new(args["input"].as_str().unwrap_or("logo")).with_extension("svg").to_string_lossy().to_string()
         });

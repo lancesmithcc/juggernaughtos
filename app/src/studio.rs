@@ -112,6 +112,106 @@ pub async fn adopt(env: &SiteEnv, concept: Concept) -> Result<(String, Vec<Strin
     Ok((format!("Logo adopted ({}). Saved four logo files, the brand guidelines PDF and a launch post.", concept.label()), ids))
 }
 
+/// Every file a finished logo ships as.
+struct LogoPack {
+    svg: String,
+    pdf: Vec<u8>,
+    eps: Vec<u8>,
+    png_high: Vec<u8>,
+    png_screen: Vec<u8>,
+    webp_high: Vec<u8>,
+    webp_screen: Vec<u8>,
+}
+
+/// Longest side of the high-resolution and screen raster files.
+pub const LOGO_HIGH_PX: u32 = 4000;
+pub const LOGO_SCREEN_PX: u32 = 1000;
+
+fn webp(png: &[u8]) -> Result<Vec<u8>, String> {
+    let img = image::load_from_memory(png).map_err(|e| e.to_string())?.into_rgba8();
+    let mut out = Vec::new();
+    image::codecs::webp::WebPEncoder::new_lossless(&mut out)
+        .encode(img.as_raw(), img.width(), img.height(), image::ExtendedColorType::Rgba8)
+        .map_err(|e| e.to_string())?;
+    Ok(out)
+}
+
+/// Raster (or SVG) logo → traced, cropped vector plus print and screen files. Blocking.
+fn build_logo_pack(bytes: &[u8], is_svg: bool, title: &str) -> Result<LogoPack, String> {
+    let svg = if is_svg {
+        String::from_utf8(bytes.to_vec()).map_err(|_| "That SVG isn't valid text.".to_string())?
+    } else {
+        let mut settings = vectorverter_core::Preset::Logo.settings();
+        // ChatGPT draws logos on a plain background: drop it, letter counters included,
+        // so every file is transparent.
+        settings.background = vectorverter_core::Background::Knockout;
+        let traced = vectorverter_core::trace_bytes(bytes, &settings).map_err(|e| format!("Vectorverter couldn't trace it: {e}"))?;
+        jugg_print::trim_to_artwork(&traced.svg, 0.04).map_err(|e| e.to_string())?
+    };
+    let png_high = jugg_print::png_fit(&svg, LOGO_HIGH_PX).map_err(|e| e.to_string())?;
+    let png_screen = jugg_print::png_fit(&svg, LOGO_SCREEN_PX).map_err(|e| e.to_string())?;
+    Ok(LogoPack {
+        pdf: jugg_print::logo_pdf(&svg, title).map_err(|e| e.to_string())?,
+        eps: jugg_print::eps_from_svg(&svg, title).map_err(|e| e.to_string())?,
+        webp_high: webp(&png_high)?,
+        webp_screen: webp(&png_screen)?,
+        png_high,
+        png_screen,
+        svg,
+    })
+}
+
+/// The owner approved a logo image: vectorize it with Vectorverter 5000, make the
+/// SVG, PDF, EPS, PNG and WebP (high-res and screen) files, and make it the brand's
+/// logo (website header, favicon, sidebar). Returns a summary and the new asset ids.
+pub async fn finish_logo(env: &SiteEnv, actor: &str, asset_id: &str) -> Result<(String, Vec<String>), String> {
+    let row: Option<(String, String)> = sqlx::query_as("SELECT kind, storage_path FROM assets WHERE id = ?").bind(asset_id).fetch_optional(&env.pool).await.map_err(|e| e.to_string())?;
+    let (kind, stored) = row.ok_or("That logo is no longer in Assets.")?;
+    if kind != "logo" && kind != "logo_vector" {
+        return Err("Only logos get the logo file set.".into());
+    }
+    if stored.contains('/') || stored.contains("..") {
+        return Err("That file can't be read.".into());
+    }
+    let ext = stored.rsplit('.').next().unwrap_or_default().to_ascii_lowercase();
+    if !matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "webp" | "svg") {
+        return Err("Only PNG, JPEG, WebP or SVG logos can be turned into the file set.".into());
+    }
+    let bytes = std::fs::read(env.cfg.assets_dir().join(&stored)).map_err(|e| format!("couldn't read the logo: {e}"))?;
+    let brand = env.brand.read().await.clone();
+    let name = brand.name.clone();
+    let title = format!("{name} logo");
+    let t2 = title.clone();
+    let pack = tokio::task::spawn_blocking(move || build_logo_pack(&bytes, ext == "svg", &t2)).await.map_err(|e| e.to_string())??;
+
+    let files: [(&[u8], &str, AssetKind, String, Option<&[u8]>); 7] = [
+        (pack.svg.as_bytes(), "svg", AssetKind::LogoVector, format!("{title} · Vector (SVG)"), Some(&pack.png_screen)),
+        (&pack.pdf, "pdf", AssetKind::LogoVector, format!("{title} · Print (PDF)"), Some(&pack.png_screen)),
+        (&pack.eps, "eps", AssetKind::LogoVector, format!("{title} · Print (EPS)"), Some(&pack.png_screen)),
+        (&pack.png_high, "png", AssetKind::Logo, format!("{title} · PNG high-res ({LOGO_HIGH_PX} px)"), Some(&pack.png_screen)),
+        (&pack.png_screen, "png", AssetKind::Logo, format!("{title} · PNG screen ({LOGO_SCREEN_PX} px)"), None),
+        (&pack.webp_high, "webp", AssetKind::Logo, format!("{title} · WebP high-res ({LOGO_HIGH_PX} px)"), Some(&pack.png_screen)),
+        (&pack.webp_screen, "webp", AssetKind::Logo, format!("{title} · WebP screen ({LOGO_SCREEN_PX} px)"), None),
+    ];
+    let mut ids = Vec::new();
+    for (bytes, ext, kind, title, preview) in files {
+        ids.push(store(env, bytes, ext, kind, &title, preview, "final").await?);
+    }
+    let mut updated = brand.clone();
+    updated.logo.primary_asset = ids.first().cloned();
+    updated.logo.mark_asset = ids.first().cloned();
+    // The old concept's reversed and one-colour versions no longer match.
+    updated.logo.reversed_asset = None;
+    updated.logo.mono_asset = None;
+    updated.logo.concept = None;
+    save_brand(env, &updated).await?;
+    let _ = jugg_db::audit::append(&env.pool, Some(&env.signer), actor, "brand.logo_finished", &json!({ "from": asset_id, "assets": ids })).await;
+    Ok((
+        format!("Your logo is vectorized and saved as SVG, PDF and EPS (print), plus PNG and WebP at {LOGO_HIGH_PX} px and {LOGO_SCREEN_PX} px. It's now your brand logo: the website header and favicon use it from the next publish."),
+        ids,
+    ))
+}
+
 pub async fn save_brand(env: &SiteEnv, b: &BrandStandards) -> Result<(), String> {
     let version: i64 = sqlx::query_scalar("SELECT COALESCE(MAX(version), 0) + 1 FROM brands").fetch_one(&env.pool).await.map_err(|e| e.to_string())?;
     let mut tx = env.pool.begin().await.map_err(|e| e.to_string())?;
@@ -185,6 +285,22 @@ impl Tool for AdoptLogo {
         let c = parse_concept(args["concept"].as_str().unwrap_or_default()).ok_or_else(|| ToolError::Args("concept must be monogram, wordmark, badge or initials".into()))?;
         let (summary, ids) = adopt(&self.0, c).await.map_err(ToolError::Failed)?;
         Ok(ToolOutput { summary: format!("{summary} They're in Assets. The website header and favicon will use the new logo next time it's published."), files: vec![], data: json!({ "assets": ids }) })
+    }
+}
+
+pub struct LogoFiles(pub Arc<SiteEnv>);
+
+#[async_trait]
+impl Tool for LogoFiles {
+    fn spec(&self) -> ToolSpec {
+        spec("finish_logo", "The owner chose a logo image (for example one made in ChatGPT): vectorize it with Vectorverter 5000 and make the complete logo file set (SVG, print PDF, EPS, PNG and WebP in high-res and screen sizes), then make it the brand's logo. Pass the asset id from the message that named it. Approving a logo in Assets does this by itself, so only call it when the owner asks in chat.",
+            json!({"type":"object","required":["asset"],"properties":{"asset":{"type":"string","description":"asset id of the chosen logo image"}}}), Risk::Modify)
+    }
+    async fn run(&self, args: Value, _ctx: &ToolContext) -> Result<ToolOutput, ToolError> {
+        let asset = args["asset"].as_str().map(str::trim).filter(|a| !a.is_empty()).ok_or_else(|| ToolError::Args("asset is required".into()))?;
+        let _ = sqlx::query("UPDATE assets SET status = 'final', decided_at = ? WHERE id = ? AND status != 'final'").bind(jugg_core::now_unix()).bind(asset).execute(&self.0.pool).await;
+        let (summary, ids) = finish_logo(&self.0, "agent", asset).await.map_err(ToolError::Failed)?;
+        Ok(ToolOutput { summary: format!("{summary} The files are in Assets."), files: vec![], data: json!({ "assets": ids }) })
     }
 }
 
@@ -285,7 +401,7 @@ pub async fn save_image_key(env: &SiteEnv, key: Option<String>, model: Option<St
 #[async_trait]
 impl Tool for GenerateImage {
     fn spec(&self) -> ToolSpec {
-        spec("generate_image", "Make ONE image (hero photo-style image, texture, icon, illustration, logo exploration) with GPT Image in the owner's own ChatGPT plan. The brand's palette and imagery rules are written into the prompt for you. When Codex is signed in on this box the image is made automatically in the background (about a minute); otherwise the owner gets an Open in ChatGPT button and drops the result back here. Either way it lands in Assets for review and you get a message naming it. Call once per image the owner needs (at most 3 per reply), then stop and tell the owner in one short sentence that the image is on its way. Never call again for the same image.",
+        spec("generate_image", "Make ONE image (hero photo-style image, texture, icon, illustration, logo exploration) with GPT Image in the owner's own ChatGPT plan. The brand's palette and imagery rules are written into the prompt for you. When Codex is signed in on this box the image is made automatically in the background (about a minute); otherwise the owner gets an Open in ChatGPT button and drops the result back here. Either way it lands in Assets for review and you get a message naming it. For a logo (kind logo): don't vectorize it yourself. When the owner approves it in Assets, Vectorverter makes the full logo file set (SVG, PDF, EPS, PNG, WebP) automatically; if they approve it in chat instead, call finish_logo with its asset id. Call once per image the owner needs (at most 3 per reply), then stop and tell the owner in one short sentence that the image is on its way. Never call again for the same image.",
             json!({"type":"object","required":["prompt"],"properties":{
                 "prompt":{"type":"string","description":"what to show; the brand rules are added automatically"},
                 "title":{"type":"string","description":"short name for the asset, e.g. 'Homepage hero'"},

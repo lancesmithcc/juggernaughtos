@@ -192,6 +192,7 @@ pub fn ChatPage() -> impl IntoView {
             <Show when=empty>
                 <div class="hero-greeting">
                     <div class="orb" aria-hidden="true"></div>
+                    <img class="hero-logo" src="/juggernaught.svg" alt="" width="96" height="96"/>
                     <h1 class="greeting">{move || greet.get()}</h1>
                     <p class="sub">
                         <Suspense fallback=|| "What are we making today?">
@@ -338,7 +339,7 @@ fn Message(msg: Msg) -> impl IntoView {
     let waiting = move || streaming.get() && text.with(|t| t.is_empty()) && tools.with(|t| t.is_empty());
     view! {
         <div class="msg assistant" class:streaming=move || streaming.get()>
-            <img class="avatar avatar-logo" src="/juggernaught.svg" alt="" width="28" height="28"/>
+            <img class="avatar avatar-logo" src="/juggernaught.svg" alt="" width="32" height="32"/>
             <div class="body">
                 <Show when=move || !tools.with(|t| t.is_empty())>
                     <ul class="tools">
@@ -403,7 +404,7 @@ fn HandoffCard(item: HandoffView, assets: RwSignal<Vec<AssetCard>>) -> impl Into
             let aid = a.id.clone();
             assets.update(|x| x.push(a));
             if let Some(HandoffAdded(s)) = added {
-                s.set(Some(format!("The image from ChatGPT for “{name}” is ready. It's in Assets now (asset {aid}).")));
+                s.set(Some(format!("The image from ChatGPT for “{name}” is ready. It's in Assets now (asset {aid}), and in this chat's folder as {}.", v.file.clone().unwrap_or_default())));
             }
         }
     };

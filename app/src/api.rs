@@ -457,6 +457,15 @@ pub async fn decide_asset(id: String, approve: bool, reason: Option<String>) -> 
     crate::assets::decide(&st, &user, &id, approve, reason).await.map_err(ServerFnError::new)
 }
 
+/// After the owner approves a logo image: vectorize it and make the full file set.
+#[server]
+pub async fn finish_logo(id: String) -> Result<Vec<AssetCard>, ServerFnError> {
+    let st = ctx::state()?;
+    let user = ctx::user(&st).await?;
+    let (_, ids) = crate::studio::finish_logo(&st.site, &user, &id).await.map_err(ServerFnError::new)?;
+    Ok(crate::studio::cards(&st, &ids).await)
+}
+
 #[server]
 pub async fn list_jobs() -> Result<Vec<JobView>, ServerFnError> {
     let st = ctx::state()?;
@@ -574,6 +583,9 @@ pub struct HandoffView {
     pub api_key_set: bool,
     /// Codex is signed in with the owner's ChatGPT, so images are made automatically.
     pub codex_ready: bool,
+    /// The finished image's file name in the chat's job folder (for the agent's tools).
+    #[serde(default)]
+    pub file: Option<String>,
 }
 
 #[server]

@@ -29,6 +29,8 @@ pub struct SegmentParams {
     /// Regions thinner than this (2·area/perimeter) are sliver candidates.
     pub sliver_thickness: f32,
     pub remove_background: bool,
+    /// With `remove_background`: also drop enclosed regions of the background colour.
+    pub knockout: bool,
     /// Compact, high-contrast blobs at least this big are dots, not specks.
     pub dot_min_area: f32,
 }
@@ -705,7 +707,7 @@ pub fn segment(bridge: bool, img: &RgbaImage, pal: &Palette, mut labels: Vec<u16
                 let mut changed = false;
                 for i in 0..w * h {
                     let r = &seg.regions[seg.map[i] as usize];
-                    if r.touches_border && r.label as usize == bg {
+                    if (r.touches_border || p.knockout) && r.label as usize == bg {
                         labels[i] = TRANSPARENT;
                         changed = true;
                     }
