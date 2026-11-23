@@ -4,13 +4,24 @@ use crate::api::{codex_images_ready, image_settings, save_image_settings, get_si
 use crate::pages::account::{AddPasskey, RegenerateRecovery, TotpEnroll};
 use leptos::prelude::*;
 
+/// A manual section: the brand-colour plate with its number, then the page.
 #[component]
-fn Panel(title: &'static str, lede: &'static str, children: Children) -> impl IntoView {
+pub fn Panel(no: &'static str, title: &'static str, lede: &'static str, children: Children) -> impl IntoView {
     view! {
         <section class="panel">
-            <header class="panel-head"><h1>{title}</h1><p>{lede}</p></header>
+            <SectionPlate no=no title=title lede=lede/>
             {children()}
         </section>
+    }
+}
+
+#[component]
+pub fn SectionPlate(no: &'static str, title: &'static str, lede: &'static str) -> impl IntoView {
+    view! {
+        <header class="panel-head">
+            <div class="plate"><span class="plate-no" aria-hidden="true">{no}</span><h1>{title}</h1></div>
+            <p>{lede}</p>
+        </header>
     }
 }
 
@@ -18,7 +29,7 @@ fn Panel(title: &'static str, lede: &'static str, children: Children) -> impl In
 pub fn BrandPanel() -> impl IntoView {
     let brand = Resource::new(|| (), |_| get_brand());
     view! {
-        <Panel title="Brand" lede="Your standards. Every asset and page is checked against these before it's final.">
+        <Panel no="4" title="Brand" lede="Your standards. Every asset and page is checked against these before it's final.">
             <crate::pages::setup::LogoPicker/>
             <Suspense fallback=|| view! { <div class="skeleton"></div> }>
                 {move || Suspend::new(async move {
@@ -32,8 +43,9 @@ pub fn BrandPanel() -> impl IntoView {
                             }}).collect_view()}
                         </div>
                         <div class="type-specimen">
-                            <p class="eyebrow">"Headings"</p><p class="specimen-h">{b.heading_font}</p>
-                            <p class="eyebrow">"Body"</p><p class="specimen-b">{b.body_font}</p>
+                            <p class="specimen-h">{b.heading_font.clone()}</p>
+                            <p class="specimen-b">{b.body_font.clone()}</p>
+                            <dl class="kv spec"><dt>"Headings"</dt><dd>{b.heading_font.clone()}</dd><dt>"Body text"</dt><dd>{b.body_font.clone()}</dd></dl>
                         </div>
                         <details class="raw"><summary>"Machine-readable standards (DESIGN.md)"</summary><pre>{b.design_md}</pre></details>
                     })
@@ -60,7 +72,7 @@ pub fn WebsitePanel() -> impl IntoView {
         });
     };
     view! {
-        <Panel title="Website" lede="Your site is built from checked blocks: secure, fast and accessible by construction. Ask in chat to add or change pages; publish here or there.">
+        <Panel no="3" title="Website" lede="Your site is built from checked blocks: secure, fast and accessible by construction. Ask in chat to add or change pages; publish here or there.">
             <Suspense fallback=|| view! { <div class="skeleton"></div> }>
                 {move || Suspend::new(async move {
                     site.await.map(|s| {
@@ -70,8 +82,8 @@ pub fn WebsitePanel() -> impl IntoView {
                         view! {
                             <div class="site-status">
                                 <div>
-                                    <p class="eyebrow">{if s.live { "Live" } else { "Not published yet" }}</p>
                                     <a class="site-url" href=s.public_url.clone() target="_blank" rel="noopener">{s.public_url.clone()}</a>
+                                    <p class="note" data-tone=if s.live { "done" } else { "needs" }>{if s.live { "Live." } else { "Not published yet." }}</p>
                                     {has_drafts.then(|| view! { <p class="hint">"You have unpublished changes."</p> })}
                                 </div>
                                 <div class="site-actions">
@@ -136,7 +148,7 @@ pub fn WebsitePanel() -> impl IntoView {
 pub fn SecurityPanel() -> impl IntoView {
     let sec = Resource::new(|| (), |_| get_security());
     view! {
-        <Panel title="Security" lede="The Steward watches, patches and backs up on its own. You'll hear from it only when something needs you.">
+        <Panel no="5" title="Security" lede="The Steward watches, patches and backs up on its own. You'll hear from it only when something needs you.">
             <Suspense fallback=|| view! { <div class="skeleton"></div> }>
                 {move || Suspend::new(async move {
                     sec.await.map(|s| {
@@ -180,7 +192,7 @@ pub fn SecurityPanel() -> impl IntoView {
 pub fn SettingsPanel() -> impl IntoView {
     let tools = Resource::new(|| (), |_| get_tools());
     view! {
-        <Panel title="Settings" lede="Connect intelligence, manage how you sign in, and see the tools I can use.">
+        <Panel no="6" title="Settings" lede="Connect intelligence, manage how you sign in, and see the tools I can use.">
             <h2 class="section-h">"Intelligence"</h2>
             <Intelligence/>
             <h2 class="section-h">"Image generation"</h2>

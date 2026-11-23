@@ -54,10 +54,7 @@ pub fn GoLivePage() -> impl IntoView {
 
     view! {
         <section class="panel golive">
-            <header class="panel-head">
-                <h1>"Go live"</h1>
-                <p>"Put your workspace and website online at your own domain. I do the technical parts and tell you when I need you: making an account, paying, or pasting something in."</p>
-            </header>
+            <crate::pages::panels::SectionPlate no="7" title="Go live" lede="Put your workspace and website online at your own domain. I do the technical parts and tell you when I need you: making an account, paying, or pasting something in."/>
             {move || busy.get().map(|b| view! { <p class="hint" role="status"><span class="spinner"></span>{b}</p> })}
             {move || msg.get().map(|m| view! { <p class="hint err" role="alert">{m}</p> })}
             {move || state.get().map(|v| {
@@ -92,11 +89,11 @@ fn StepCard(
 ) -> impl IntoView {
     let status = step.status.clone();
     let label = match status.as_str() {
-        "done" => "Done",
-        "needs_you" => "Needs you",
-        "waiting" => "Checking",
-        "active" => "Now",
-        _ => "Later",
+        "done" => "Done.",
+        "needs_you" => "Waiting on you.",
+        "waiting" => "I'm checking; nothing to do.",
+        "active" => "Your next step.",
+        _ => "After the step above.",
     };
     let body = match (step.key.as_str(), status.as_str()) {
         ("domain", "active") => Some(domain_form(domain, busy, submit_domain).into_any()),
@@ -185,12 +182,12 @@ fn StepCard(
     view! {
         <li class="golive-step" data-status=status.clone()>
             <div class="golive-step-head">
-                <span class="golive-num" aria-hidden="true">{if status == "done" { "✓".to_string() } else { n.to_string() }}</span>
+                <span class="golive-num" aria-hidden="true">{n.to_string()}</span>
                 <div>
                     <h2>{step.title.clone()}</h2>
                     {(!step.detail.is_empty()).then(|| view! { <p>{step.detail.clone()}</p> })}
                 </div>
-                <span class=format!("golive-badge s-{status}")>{label}</span>
+                <span class=format!("golive-badge note s-{status}")>{label}</span>
             </div>
             {body.map(|b| view! { <div class="golive-step-body">{b}</div> })}
         </li>

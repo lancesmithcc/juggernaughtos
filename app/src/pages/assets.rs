@@ -30,18 +30,40 @@ fn status_label(s: &str) -> &'static str {
     }
 }
 
-fn icon(mime: &str) -> &'static str {
-    if mime.starts_with("video/") {
-        "▶"
-    } else if mime.starts_with("audio/") {
-        "♪"
-    } else if mime == "application/pdf" {
-        "PDF"
-    } else if mime.starts_with("text/html") {
-        "</>"
-    } else {
-        "◧"
+/// The file format as a spec sheet names it: SVG, PNG, PDF, EPS…
+fn format_of(mime: &str) -> String {
+    let sub = mime.split(';').next().unwrap_or(mime).rsplit('/').next().unwrap_or(mime);
+    match sub {
+        "svg+xml" => "SVG".into(),
+        "jpeg" => "JPEG".into(),
+        "postscript" => "EPS".into(),
+        "html" => "HTML".into(),
+        "mpeg" => "MP3".into(),
+        "plain" => "Text".into(),
+        other => other.to_ascii_uppercase(),
     }
+}
+
+fn icon(mime: &str) -> String {
+    format_of(mime)
+}
+
+/// `1795442384` → `23 Nov 2026` (UTC), without a date library in the browser.
+fn day(ts: i64) -> String {
+    let days = ts.div_euclid(86_400);
+    // Howard Hinnant's civil-from-days.
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    format!("{d} {} {y}", MONTHS[(m - 1) as usize])
 }
 
 /// One asset: preview, status, the brand gate's verdict, and the owner's decision.
@@ -86,10 +108,14 @@ pub fn AssetTile(card: AssetCard) -> impl IntoView {
                         }}
                     </a>
                     <div class="asset-body">
-                        <p class="asset-kind">{label(&c.kind)}</p>
                         <h3>{c.title.clone()}</h3>
-                        <p class=format!("asset-status s-{status}")>{status_label(&status)}</p>
-                        {(!c.summary.is_empty()).then(|| view! { <p class="asset-summary">{c.summary.clone()}</p> })}
+                        <dl class="spec">
+                            <dt>"Kind"</dt><dd>{label(&c.kind)}</dd>
+                            <dt>"Format"</dt><dd>{format_of(&c.mime)}</dd>
+                            <dt>"Made"</dt><dd>{day(c.created_at)}</dd>
+                            <dt>"Status"</dt><dd class=format!("asset-status s-{status}")>{status_label(&status)}</dd>
+                            {(!c.summary.is_empty()).then(|| view! { <dt>"Brand check"</dt><dd>{c.summary.clone()}</dd> })}
+                        </dl>
                         {(!c.findings.is_empty()).then(|| view! {
                             <ul class="asset-findings">{c.findings.iter().take(4).map(|f| view! { <li>{f.clone()}</li> }).collect_view()}</ul>
                         })}
@@ -144,10 +170,7 @@ pub fn AssetsPanel() -> impl IntoView {
     let jobs = Resource::new(|| (), |_| list_jobs());
     view! {
         <section class="panel">
-            <header class="panel-head">
-                <h1>"Assets"</h1>
-                <p>"Everything we've made. Each piece is checked against your brand first; approve it to make it final."</p>
-            </header>
+            <crate::pages::panels::SectionPlate no="2" title="Assets" lede="Everything we've made. Each piece is checked against your brand first; approve it to make it final."/>
             <Suspense fallback=|| ()>
                 {move || Suspend::new(async move {
                     let running = jobs.await.unwrap_or_default();
@@ -213,8 +236,8 @@ pub fn ApprovalCard(item: ApprovalView) -> impl IntoView {
             view! {
                 <div class="approval" data-status=i.status.clone()>
                     <div class="approval-text">
-                        <p class="approval-kicker">{if pending { "Needs your OK" } else if i.status == "approved" { "Approved" } else { "Declined" }}</p>
                         <p class="approval-summary">{i.summary.clone()}</p>
+                        <p class="note" data-tone=if pending { "needs" } else { "done" }>{if pending { "Needs your OK before it goes out." } else if i.status == "approved" { "Approved." } else { "Declined." }}</p>
                         {i.result.clone().map(|r| view! { <p class="approval-result">{r}</p> })}
                     </div>
                     {pending.then(|| view! {
@@ -228,5 +251,17 @@ pub fn ApprovalCard(item: ApprovalView) -> impl IntoView {
                 </div>
             }
         }}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn spec_values() {
+        assert_eq!(super::day(1_795_442_384), "23 Nov 2026");
+        assert_eq!(super::day(0), "1 Jan 1970");
+        assert_eq!(super::format_of("image/svg+xml"), "SVG");
+        assert_eq!(super::format_of("application/postscript"), "EPS");
+        assert_eq!(super::format_of("text/html; charset=utf-8"), "HTML");
     }
 }

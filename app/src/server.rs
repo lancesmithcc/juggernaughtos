@@ -473,22 +473,99 @@ pub async fn brand_mark(State(st): State<AppState>) -> Response {
     }
 }
 
-/// `/brand.css`: the owner's brand tokens mapped onto the admin theme.
+/// `/brand.css`: the business's brand worn by the workspace. Scoped to `.workspace`,
+/// so sign-in, setup and loading keep Juggernaught's own look. Colours are made safe
+/// here: text on the brand plate is black or white, whichever reads, and the brand
+/// used as text is darkened (light pages) or lightened (dark pages) until it passes
+/// WCAG AA, whatever colour the business picked.
 pub async fn brand_css(State(st): State<AppState>) -> impl IntoResponse {
     let b = st.brand.read().await;
-    let mut css = String::from(":root{");
-    if let Some(p) = b.color("primary") {
-        css.push_str(&format!("--primary:{p};--primary-soft:color-mix(in srgb,{p} 16%,var(--surface));"));
-    }
-    if let Some(pi) = b.color("primary-ink") {
-        css.push_str(&format!("--primary-ink:{pi};"));
-    }
-    css.push('}');
-    let heading = &b.typography.heading.family;
-    if heading != "Plus Jakarta Sans" {
-        css.push_str(&format!(".greeting,.panel-head h1,.setup-title,.specimen-h{{font-family:'{heading}',var(--font)}}"));
-    }
+    let css = workspace_theme(b.color("primary").as_deref(), &b.typography.heading.family);
     ([(header::CONTENT_TYPE, "text/css; charset=utf-8"), (header::CACHE_CONTROL, "no-cache")], css)
+}
+
+pub(crate) fn workspace_theme(primary: Option<&str>, heading: &str) -> String {
+    let mut css = String::new();
+    if let Some(rgb) = primary.and_then(parse_hex) {
+        let hex = to_hex(rgb);
+        let on_plate = if contrast(rgb, [255, 255, 255]) >= contrast(rgb, [17, 17, 17]) { "#ffffff" } else { "#111111" };
+        let on_light = toward(rgb, [0, 0, 0], [255, 255, 255]);
+        let on_dark = toward(rgb, [255, 255, 255], [21, 21, 21]);
+        css.push_str(&format!(".workspace{{--brand:{hex};--brand-ink:{on_plate};--brand-text:{};--brand-text-dark:{}}}", to_hex(on_light), to_hex(on_dark)));
+    }
+    let safe = heading.chars().all(|c| c.is_ascii_alphanumeric() || c == ' ' || c == '-');
+    if safe && !heading.trim().is_empty() && heading != "Archivo" && heading != "Plus Jakarta Sans" {
+        css.push_str(&format!(".workspace .plate h1,.workspace .greeting,.workspace .specimen-h{{font-family:'{heading}',var(--font);font-stretch:100%}}"));
+    }
+    css
+}
+
+fn parse_hex(h: &str) -> Option<[u8; 3]> {
+    let h = h.trim().trim_start_matches('#');
+    let h: String = if h.len() == 3 { h.chars().flat_map(|c| [c, c]).collect() } else { h.to_string() };
+    if h.len() != 6 {
+        return None;
+    }
+    let v = u32::from_str_radix(&h, 16).ok()?;
+    Some([(v >> 16) as u8, (v >> 8) as u8, v as u8])
+}
+
+fn to_hex(c: [u8; 3]) -> String {
+    format!("#{:02x}{:02x}{:02x}", c[0], c[1], c[2])
+}
+
+fn luminance(c: [u8; 3]) -> f64 {
+    let ch = |v: u8| {
+        let s = v as f64 / 255.0;
+        if s <= 0.03928 { s / 12.92 } else { ((s + 0.055) / 1.055).powf(2.4) }
+    };
+    0.2126 * ch(c[0]) + 0.7152 * ch(c[1]) + 0.0722 * ch(c[2])
+}
+
+fn contrast(a: [u8; 3], b: [u8; 3]) -> f64 {
+    let (x, y) = (luminance(a), luminance(b));
+    (x.max(y) + 0.05) / (x.min(y) + 0.05)
+}
+
+/// Mix `c` toward `target` until it reads at 4.5:1 on `ground`.
+fn toward(c: [u8; 3], target: [u8; 3], ground: [u8; 3]) -> [u8; 3] {
+    let mut out = c;
+    for step in 0..=20 {
+        let t = step as f64 / 20.0;
+        out = [0, 1, 2].map(|i| (c[i] as f64 + (target[i] as f64 - c[i] as f64) * t).round() as u8);
+        if contrast(out, ground) >= 4.5 {
+            break;
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod theme_tests {
+    use super::*;
+
+    #[test]
+    fn brand_colours_stay_readable() {
+        // A pale yellow brand: black text on the plate, a darker yellow as text.
+        let css = workspace_theme(Some("#f2e14c"), "Archivo");
+        assert!(css.contains("--brand:#f2e14c;--brand-ink:#111111"), "{css}");
+        let text = css.split("--brand-text:").nth(1).unwrap()[..7].to_string();
+        assert!(contrast(parse_hex(&text).unwrap(), [255, 255, 255]) >= 4.5, "{text}");
+        // A deep blue brand: white text on the plate, readable as-is on white.
+        let css = workspace_theme(Some("#2b4acb"), "Archivo");
+        assert!(css.contains("--brand-ink:#ffffff;--brand-text:#2b4acb"), "{css}");
+        let dark = css.split("--brand-text-dark:").nth(1).unwrap()[..7].to_string();
+        assert!(contrast(parse_hex(&dark).unwrap(), [21, 21, 21]) >= 4.5, "{dark}");
+        // Only the workspace wears it.
+        assert!(css.starts_with(".workspace{"));
+    }
+
+    #[test]
+    fn heading_font_is_sanitised() {
+        assert!(workspace_theme(None, "Fraunces").contains("'Fraunces'"));
+        assert!(!workspace_theme(None, "x'}body{display:none").contains("body"));
+        assert!(workspace_theme(Some("not a colour"), "Archivo").is_empty());
+    }
 }
 
 // ---------------------------------------------------------------- auth routes

@@ -153,7 +153,7 @@ pub fn LoginPage() -> impl IntoView {
                     {move || msg.get().map(|m| view! { <p class="error" role="alert">{m}</p> })}
                     <div class="login-foot">
                         <Show when=move || mode.get() != Mode::Choose>
-                            <button class="linkish" type="button" on:click=move |_| { msg.set(None); sent.set(false); mode.set(Mode::Choose) }>"← Other ways to sign in"</button>
+                            <button class="linkish" type="button" on:click=move |_| { msg.set(None); sent.set(false); mode.set(Mode::Choose) }><crate::icons::Icon name="back" size=14/>"Other ways to sign in"</button>
                         </Show>
                         <Show when=move || mode.get() != Mode::Recovery>
                             <button class="linkish" type="button" on:click=move |_| { msg.set(None); code.set(String::new()); mode.set(Mode::Recovery) }>"Lost your device? Use a recovery code"</button>

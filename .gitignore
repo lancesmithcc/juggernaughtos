@@ -4,3 +4,8 @@
 *.pk8
 *.key
 /dist
+
+# Design-tool scratch (decision sketches, review captures)
+.impeccable/mocks/
+.impeccable/review/
+.impeccable/config.local.json

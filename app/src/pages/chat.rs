@@ -189,11 +189,25 @@ pub fn ChatPage() -> impl IntoView {
 
     view! {
         <section class="chat" class:is-empty=empty>
-            <Show when=empty>
-                <div class="hero-greeting">
-                    <div class="orb" aria-hidden="true"></div>
-                    <img class="hero-logo" src="/juggernaught.svg" alt="" width="96" height="96"/>
-                    <h1 class="greeting">{move || greet.get()}</h1>
+            // The section plate opens every chat: the greeting while it's empty, a slim
+            // "Chat" plate once the conversation starts.
+            <div class="hero-greeting">
+                <Show when=empty fallback=|| view! {
+                    <div class="plate slim"><span class="plate-no" aria-hidden="true">"1"</span><h1>"Chat"</h1></div>
+                }>
+                    <div class="plate"><span class="plate-no" aria-hidden="true">"1"</span><h1 class="greeting">{move || greet.get()}</h1></div>
+                </Show>
+            </div>
+
+            <div class="thread" role="log" aria-live="polite" aria-busy=move || busy.get().to_string()>
+                <For each=move || messages.get() key=|m| m.id let:m>
+                    <Message msg=m/>
+                </For>
+            </div>
+
+            <div class="dock">
+                // The question sits right above the suggestions and composer that answer it.
+                <Show when=empty>
                     <p class="sub">
                         <Suspense fallback=|| "What are we making today?">
                             {move || Suspend::new(async move {
@@ -204,16 +218,7 @@ pub fn ChatPage() -> impl IntoView {
                             })}
                         </Suspense>
                     </p>
-                </div>
-            </Show>
-
-            <div class="thread" role="log" aria-live="polite" aria-busy=move || busy.get().to_string()>
-                <For each=move || messages.get() key=|m| m.id let:m>
-                    <Message msg=m/>
-                </For>
-            </div>
-
-            <div class="dock">
+                </Show>
                 <Suspense fallback=|| ()>
                     {move || Suspend::new(async move {
                         let suggestions = overview.await.map(|o| o.suggestions).unwrap_or_default();
@@ -268,7 +273,7 @@ pub fn ChatPage() -> impl IntoView {
                                         on:click=move |_| {
                                             queued.update(|images| images.retain(|i| i.id != item.0));
                                             attachment_error.set(None);
-                                        }>"×"</button>
+                                        }><crate::icons::Icon name="close" size=14/></button>
                                 </li>
                             </For>
                         </ul>
@@ -303,10 +308,10 @@ pub fn ChatPage() -> impl IntoView {
                         <button type="button" class="icon-btn" aria-label="Attach images" title="Attach images"
                             disabled=move || sending.get() on:click=move |_| {
                                 if let Some(input) = file_input.get() { input.click(); }
-                            }>"+"</button>
+                            }><crate::icons::Icon name="plus" size=20/></button>
                         <span class="composer-status" role="status">{move || if sending.get() && queued.with(|i| !i.is_empty()) { "Uploading images…" } else { "" }}</span>
                         <button type="submit" class="send" aria-label="Send"
-                            disabled=move || busy.get() || (draft.with(|d| d.trim().is_empty()) && queued.with(|i| i.is_empty()))>"↑"</button>
+                            disabled=move || busy.get() || (draft.with(|d| d.trim().is_empty()) && queued.with(|i| i.is_empty()))><crate::icons::Icon name="send" size=20/></button>
                     </div>
                 </form>
                 {move || attachment_error.get().map(|error| view! { <p class="composer-error" role="alert">{error}</p> })}
@@ -339,7 +344,6 @@ fn Message(msg: Msg) -> impl IntoView {
     let waiting = move || streaming.get() && text.with(|t| t.is_empty()) && tools.with(|t| t.is_empty());
     view! {
         <div class="msg assistant" class:streaming=move || streaming.get()>
-            <img class="avatar avatar-logo" src="/juggernaught.svg" alt="" width="32" height="32"/>
             <div class="body">
                 <Show when=move || !tools.with(|t| t.is_empty())>
                     <ul class="tools">
@@ -513,7 +517,7 @@ fn HandoffCard(item: HandoffView, assets: RwSignal<Vec<AssetCard>>) -> impl Into
         <div class="handoff" class:done=move || done.get()>
             {move || {
                 if done.get() {
-                    return view! { <p class="handoff-done">"✓ Added to Assets"</p> }.into_any();
+                    return view! { <p class="handoff-done ok-line">"Added to Assets"</p> }.into_any();
                 }
                 if making.get() {
                     return view! {

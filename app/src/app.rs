@@ -66,6 +66,12 @@ fn Workspace() -> impl IntoView {
     let overview = Resource::new(|| (), |_| crate::api::get_overview());
     // Panels (e.g. Settings → Intelligence) refetch this to update the sidebar pill.
     provide_context(overview);
+    let navigate = leptos_router::hooks::use_navigate();
+    Effect::new(move |prev: Option<()>| {
+        if prev.is_none() {
+            section_shortcuts(navigate.clone());
+        }
+    });
     view! {
         <div class="workspace" class:sidebar-open=open>
             <aside class="sidebar" aria-label="Main">
@@ -83,23 +89,24 @@ fn Workspace() -> impl IntoView {
                             })}
                         </Suspense>
                     </A>
-                    <button class="icon-btn only-mobile" aria-label="Close menu" on:click=move |_| set_open.set(false)>"×"</button>
+                    <button class="icon-btn only-mobile" aria-label="Close menu" on:click=move |_| set_open.set(false)><crate::icons::Icon name="close"/></button>
                 </div>
                 <A href="/" attr:class="new-chat">
-                    <span class="plus" aria-hidden="true">"+"</span>"New chat"
+                    <span class="plus"><crate::icons::Icon name="plus" size=14/></span>"New chat"
                 </A>
                 <nav class="nav">
-                    <NavItem href="/assets" icon="◧" label="Assets"/>
-                    <NavItem href="/website" icon="◎" label="Website"/>
-                    <NavItem href="/brand" icon="◆" label="Brand"/>
-                    <NavItem href="/security" icon="◈" label="Security"/>
-                    <NavItem href="/settings" icon="⚙" label="Settings"/>
-                    <A href="/go-live" attr:class="nav-item">
-                        <span class="nav-icon" aria-hidden="true">"↗"</span>
+                    <NavItem href="/" no="1" label="Chat"/>
+                    <NavItem href="/assets" no="2" label="Assets"/>
+                    <NavItem href="/website" no="3" label="Website"/>
+                    <NavItem href="/brand" no="4" label="Brand"/>
+                    <NavItem href="/security" no="5" label="Security"/>
+                    <NavItem href="/settings" no="6" label="Settings"/>
+                    <A href="/go-live" attr:class="nav-item" attr:aria-keyshortcuts="7">
+                        <span class="nav-no" aria-hidden="true">"7"</span>
                         <span>"Go live"</span>
                         <Suspense fallback=|| ()>
                             {move || Suspend::new(async move {
-                                overview.await.ok().filter(|o| o.go_live_needs_you).map(|_| view! { <span class="nav-badge" title="Go live needs you">"Needs you"</span> })
+                                overview.await.ok().filter(|o| o.go_live_needs_you).map(|_| view! { <span class="nav-note">"needs you"</span> })
                             })}
                         </Suspense>
                     </A>
@@ -121,7 +128,7 @@ fn Workspace() -> impl IntoView {
             </aside>
             <div class="scrim only-mobile" on:click=move |_| set_open.set(false)></div>
             <main class="main">
-                <button class="icon-btn menu-btn only-mobile" aria-label="Open menu" on:click=move |_| set_open.set(true)>"☰"</button>
+                <button class="icon-btn menu-btn only-mobile" aria-label="Open menu" on:click=move |_| set_open.set(true)><crate::icons::Icon name="menu" size=20/></button>
                 <Outlet/>
             </main>
             <crate::pages::account::PasskeyNudge/>
@@ -129,12 +136,50 @@ fn Workspace() -> impl IntoView {
     }
 }
 
+/// One manual section. Its number is also its keyboard shortcut (press 1–7).
 #[component]
-fn NavItem(href: &'static str, icon: &'static str, label: &'static str) -> impl IntoView {
+fn NavItem(href: &'static str, no: &'static str, label: &'static str) -> impl IntoView {
     view! {
-        <A href=href attr:class="nav-item">
-            <span class="nav-icon" aria-hidden="true">{icon}</span>
+        <A href=href attr:class="nav-item" attr:aria-keyshortcuts=no exact=true>
+            <span class="nav-no" aria-hidden="true">{no}</span>
             <span>{label}</span>
         </A>
+    }
+}
+
+/// Section numbers double as shortcuts, like a manual's tabs: 1 Chat … 7 Go live.
+/// Ignored while typing, and with any modifier held.
+fn section_shortcuts(navigate: impl Fn(&str, leptos_router::NavigateOptions) + Clone + 'static) {
+    #[cfg(not(feature = "hydrate"))]
+    let _ = navigate;
+    #[cfg(feature = "hydrate")]
+    {
+        use leptos::wasm_bindgen::{closure::Closure, JsCast};
+        let Some(win) = web_sys::window() else { return };
+        let handler = Closure::<dyn Fn(web_sys::KeyboardEvent)>::new(move |ev: web_sys::KeyboardEvent| {
+            if ev.ctrl_key() || ev.meta_key() || ev.alt_key() || ev.default_prevented() {
+                return;
+            }
+            let typing = ev.target().and_then(|t| t.dyn_into::<web_sys::Element>().ok()).is_some_and(|el| {
+                matches!(el.tag_name().as_str(), "INPUT" | "TEXTAREA" | "SELECT") || el.closest("[contenteditable]").ok().flatten().is_some()
+            });
+            if typing {
+                return;
+            }
+            let to = match ev.key().as_str() {
+                "1" => "/",
+                "2" => "/assets",
+                "3" => "/website",
+                "4" => "/brand",
+                "5" => "/security",
+                "6" => "/settings",
+                "7" => "/go-live",
+                _ => return,
+            };
+            ev.prevent_default();
+            navigate(to, Default::default());
+        });
+        let _ = win.add_event_listener_with_callback("keydown", handler.as_ref().unchecked_ref());
+        handler.forget();
     }
 }

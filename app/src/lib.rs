@@ -3,6 +3,7 @@
 
 pub mod api;
 pub mod app;
+pub mod icons;
 pub mod client;
 pub mod markdown;
 pub mod pages;
