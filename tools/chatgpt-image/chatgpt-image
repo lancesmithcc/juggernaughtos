@@ -1,6 +1,0 @@
-#!/bin/sh
-# Entry point used by Juggernaught: the pinned Node.js, Playwright and Chromium next to this file.
-d=$(cd "$(dirname "$0")" && pwd)
-export PLAYWRIGHT_BROWSERS_PATH="$d/browsers"
-node="$d/node/bin/node"; [ -x "$node" ] || node=node
-exec "$node" "$d/chatgpt-image.mjs" "$@"

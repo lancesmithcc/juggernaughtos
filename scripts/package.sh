@@ -13,11 +13,6 @@ cp "$ROOT/target/release/juggernaught" "$STAGE/bin/"
 strip "$STAGE/bin/juggernaught" 2>/dev/null || true
 cp -r "$ROOT/target/site" "$STAGE/site"
 cp -r "$ROOT/deploy" "$STAGE/deploy"
-mkdir -p "$STAGE/tools"
-for t in "$ROOT"/tools/*/; do
-  n=$(basename "$t"); mkdir -p "$STAGE/tools/$n"
-  find "$t" -maxdepth 1 -type f ! -name '.*' -exec cp {} "$STAGE/tools/$n/" \;
-done
 cp "$ROOT/tools.lock.toml" "$ROOT/install.sh" "$ROOT/README.md" "$STAGE/"
 echo "v${VER}-${SHA}" > "$STAGE/VERSION"
 if [[ -f "$ROOT/target/sbom.cdx.json" ]]; then

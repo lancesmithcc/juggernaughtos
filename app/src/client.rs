@@ -13,6 +13,53 @@ mod js {
         #[wasm_bindgen(js_name = passkeyLogin)]
         pub fn passkey_login() -> js_sys::Promise;
     }
+    #[wasm_bindgen(module = "/js/handoff.js")]
+    extern "C" {
+        #[wasm_bindgen(js_name = imageFromEvent)]
+        pub fn image_from_event(ev: &JsValue) -> JsValue;
+        #[wasm_bindgen(js_name = droppedUrl)]
+        pub fn dropped_url(ev: &JsValue) -> String;
+        #[wasm_bindgen(js_name = uploadHandoff)]
+        pub fn upload_handoff(id: &str, file: &JsValue) -> js_sys::Promise;
+        #[wasm_bindgen(js_name = copyText)]
+        pub fn copy_text(text: &str) -> js_sys::Promise;
+    }
+}
+
+/// An image file the owner dropped, pasted or picked (`None` if there isn't one).
+/// When a drop carried only a web address, `Err` holds it.
+#[cfg(feature = "hydrate")]
+pub fn image_in(ev: &wasm_bindgen::JsValue) -> Result<Option<wasm_bindgen::JsValue>, String> {
+    let f = js::image_from_event(ev);
+    if f.is_null() || f.is_undefined() {
+        let url = js::dropped_url(ev);
+        return if url.is_empty() { Ok(None) } else { Err(url) };
+    }
+    Ok(Some(f))
+}
+
+/// Upload the owner's image for a hand-off. Ok(view) or a message to show.
+#[cfg(feature = "hydrate")]
+pub async fn upload_handoff(id: &str, file: &wasm_bindgen::JsValue) -> Result<crate::api::HandoffView, String> {
+    let raw = wasm_bindgen_futures::JsFuture::from(js::upload_handoff(id, file)).await.ok().and_then(|v| v.as_string()).unwrap_or_default();
+    let v: serde_json::Value = serde_json::from_str(&raw).map_err(|_| "Upload failed.".to_string())?;
+    if v["ok"] == true {
+        serde_json::from_str(v["json"].as_str().unwrap_or_default()).map_err(|_| "Upload failed.".to_string())
+    } else {
+        Err(v["error"].as_str().unwrap_or("Upload failed.").to_string())
+    }
+}
+
+/// Copy text to the clipboard (best effort).
+pub fn copy(text: &str) {
+    #[cfg(feature = "hydrate")]
+    {
+        let p = js::copy_text(text);
+        leptos::task::spawn_local(async move {
+            let _ = wasm_bindgen_futures::JsFuture::from(p).await;
+        });
+    }
+    let _ = text;
 }
 
 /// Returns "ok" or a message to show.

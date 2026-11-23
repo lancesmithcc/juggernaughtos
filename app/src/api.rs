@@ -92,6 +92,7 @@ pub enum StreamEvent {
     Usage {},
     Assets { items: Vec<AssetCard> },
     Approvals { items: Vec<ApprovalView> },
+    Handoffs { items: Vec<HandoffView> },
     Done,
     Error { message: String },
 }
@@ -539,91 +540,34 @@ pub async fn save_image_settings(key: Option<String>, model: Option<String>) -> 
 
 // ------------------------------------------------------------------ image generation (ChatGPT default)
 
+
+/// An image the owner makes in their own ChatGPT and drops back into the chat.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct ImageStatusView {
-    /// The ChatGPT image tool (Playwright + Chromium) is installed on this box.
-    pub installed: bool,
-    /// signed_in | signed_out | bot_check | unknown
-    pub session: String,
-    pub used_hour: usize,
-    pub used_day: usize,
-    pub per_hour: usize,
-    pub per_day: usize,
-    pub min_gap_secs: i64,
-    pub paused_until: Option<i64>,
-    pub paused_reason: Option<String>,
+pub struct HandoffView {
+    pub id: String,
+    pub title: String,
+    /// The exact text to send in ChatGPT (brand rules included).
+    pub prompt: String,
+    pub shape: String,
+    /// https://chatgpt.com/?q=… with the prompt filled in.
+    pub open_url: String,
+    /// waiting | done
+    pub status: String,
+    pub asset: Option<AssetCard>,
+    /// An OpenAI API key is saved, so "make it automatically" is offered.
     pub api_key_set: bool,
-    /// One-click install from the pop-up: "" | running | ok | failed: …
-    pub install: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct SignInFrameView {
-    pub jpeg_b64: Option<String>,
-    pub signed_in: bool,
-    pub active: bool,
-    /// Sign-in happens in a Chrome window on the server's own screen (a Mac): Touch ID works there.
-    pub here: bool,
-    pub step: String,
 }
 
 #[server]
-pub async fn image_status() -> Result<ImageStatusView, ServerFnError> {
-    let st = ctx::state()?;
-    ctx::user(&st).await?;
-    let u = crate::images::usage(&st.site).await;
-    let l = crate::images::CHATGPT_LIMITS;
-    Ok(ImageStatusView {
-        installed: u.installed,
-        session: u.session.into(),
-        used_hour: u.used_hour,
-        used_day: u.used_day,
-        per_hour: l.per_hour,
-        per_day: l.per_day,
-        min_gap_secs: l.min_gap_secs,
-        paused_until: u.paused_until,
-        paused_reason: u.paused_reason,
-        api_key_set: crate::studio::image_key(&st.site).await.is_some(),
-        install: crate::images::install_state(),
-    })
-}
-
-#[server]
-pub async fn chatgpt_install() -> Result<(), ServerFnError> {
+pub async fn handoff_use_api(id: String) -> Result<HandoffView, ServerFnError> {
     let st = ctx::state()?;
     let user = ctx::user(&st).await?;
-    crate::images::start_install(&st.site);
-    let _ = jugg_db::audit::append(&st.pool, Some(&st.signer), &user, "tools.install_requested", &serde_json::json!({ "tool": "chatgpt-image" })).await;
-    Ok(())
+    crate::images::make_with_api(&st, &user, &id).await.map_err(ServerFnError::new)
 }
 
-#[server]
-pub async fn chatgpt_check() -> Result<String, ServerFnError> {
-    let st = ctx::state()?;
-    ctx::user(&st).await?;
-    crate::images::check_session(&st.site).await.map(str::to_string).map_err(ServerFnError::new)
-}
 
-#[server]
-pub async fn chatgpt_signin_start() -> Result<(), ServerFnError> {
-    let st = ctx::state()?;
-    let user = ctx::user(&st).await?;
-    crate::images::sign_in_start(&st.site).await.map_err(ServerFnError::new)?;
-    let _ = jugg_db::audit::append(&st.pool, Some(&st.signer), &user, "images.chatgpt_sign_in_opened", &serde_json::json!({})).await;
-    Ok(())
-}
 
-#[server]
-pub async fn chatgpt_signin_frame() -> Result<SignInFrameView, ServerFnError> {
-    let st = ctx::state()?;
-    ctx::user(&st).await?;
-    let f = crate::images::sign_in_frame().await;
-    Ok(SignInFrameView { jpeg_b64: f.jpeg_b64, signed_in: f.signed_in, active: f.active, here: f.here, step: f.step.into() })
-}
 
-#[server]
-pub async fn chatgpt_signin_input(kind: String, x: f64, y: f64, text: String) -> Result<(), ServerFnError> {
-    let st = ctx::state()?;
-    ctx::user(&st).await?;
-    crate::images::sign_in_input(&kind, x, y, &text).await.map_err(ServerFnError::new)
-}
+
+
+

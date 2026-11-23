@@ -124,3 +124,65 @@ pub fn RegenerateRecovery(#[prop(into)] on_done: Callback<()>) -> impl IntoView 
         </div>
     }
 }
+
+/// After signing in: if this account has no passkey yet, offer Touch ID / Face ID for
+/// next time. "Not now" hides it for this browser session.
+#[component]
+pub fn PasskeyNudge() -> impl IntoView {
+    let show = RwSignal::new(false);
+    let added = RwSignal::new(false);
+    const KEY: &str = "jugg-passkey-nudge";
+    Effect::new(move |_| {
+        if session_flag(KEY) {
+            return;
+        }
+        leptos::task::spawn_local(async move {
+            if let Ok(m) = crate::api::get_sign_in_methods().await {
+                show.set(m.passkeys.is_empty());
+            }
+        });
+    });
+    let dismiss = move || {
+        set_session_flag(KEY);
+        show.set(false);
+    };
+    let done = Callback::new(move |_| {
+        added.set(true);
+        set_session_flag(KEY);
+        set_timeout(move || show.set(false), std::time::Duration::from_millis(1800));
+    });
+    view! {
+        <Show when=move || show.get()>
+            <div class="modal-backdrop" on:click=move |_| dismiss()>
+                <div class="modal" role="dialog" aria-modal="true" aria-labelledby="pk-title" on:click=|ev| ev.stop_propagation()>
+                    <h2 id="pk-title">{move || if added.get() { "You're set" } else { "Sign in with your fingerprint next time" }}</h2>
+                    <p>"Add a passkey and next time you just touch Touch ID (or use Face ID or Windows Hello) instead of waiting for an email link. It stays on this device and can't be phished."</p>
+                    <AddPasskey on_done=done/>
+                    <Show when=move || !added.get()>
+                        <button class="linkish" type="button" on:click=move |_| dismiss()>"Not now"</button>
+                    </Show>
+                </div>
+            </div>
+        </Show>
+    }
+}
+
+fn session_flag(key: &str) -> bool {
+    #[cfg(feature = "hydrate")]
+    {
+        return web_sys::window().and_then(|w| w.session_storage().ok().flatten()).and_then(|s| s.get_item(key).ok().flatten()).is_some();
+    }
+    #[allow(unreachable_code)]
+    {
+        let _ = key;
+        true
+    }
+}
+
+fn set_session_flag(key: &str) {
+    #[cfg(feature = "hydrate")]
+    if let Some(s) = web_sys::window().and_then(|w| w.session_storage().ok().flatten()) {
+        let _ = s.set_item(key, "1");
+    }
+    let _ = key;
+}

@@ -59,6 +59,8 @@ pub enum AgentEvent {
     Assets { items: serde_json::Value },
     /// Actions waiting for the owner's Approve / Decline.
     Approvals { items: serde_json::Value },
+    /// Images waiting for the owner to make in their ChatGPT.
+    Handoffs { items: serde_json::Value },
     Done,
     Error { message: String },
 }

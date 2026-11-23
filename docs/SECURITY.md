@@ -125,35 +125,19 @@ Internal review of the whole system, done 2026-11-22. Each finding and what chan
 | 7 | Parsers of attacker-controlled input had example tests only | medium | **proptest** suites: field/file decryption (tampering, garbage), backup files, sshd journal lines, honeytoken paths, IPs headed for nftables, the brand gate (SVG/HTML/PDF/raster/CSS), chat markdown, the HTML sanitizer, page slugs, the MCP handler |
 | 8 | No machine-readable inventory of what ships | low | CycloneDX 1.5 SBOM (`scripts/sbom.py`): every crate linked into the binary with its Cargo.lock checksum and licence, plus every pinned tool with its per-arch SHA-256. Shipped in the tarball and next to it as `*.sbom.cdx.json` |
 
-### ChatGPT image worker
+### Images from the owner's ChatGPT (hand-off)
 
-- The owner's ChatGPT login lives only in a Chromium profile at `data_dir/chatgpt/profile` (0700,
-  user `jugg`). Juggernaught never sees or stores the password: the Connect ChatGPT pop-up streams
-  screenshots of a headless browser on the server and forwards the owner's clicks and keystrokes;
-  input is passed through and never written down. Opening the pop-up and a completed sign-in are
-  audit-logged.
-- On a Mac with Google Chrome installed (a desktop install, the owner at the keyboard), the worker
-  uses the installed Chrome instead (`--browser chrome`, profile `data_dir/chatgpt/profile-chrome`)
-  and sign-in happens in a visible Chrome window on that screen, so passkeys with Touch ID, Apple
-  and Google sign-in work and the owner ticks any human check directly. Playwright's mock keychain
-  is turned off for Chrome so passkeys and the session use the owner's real login keychain; the
-  worker keeps the owner's HOME there. If headless Chrome is shown a human check while making an
-  image, the window is shown so the owner can tick it (up to about 2.5 minutes). Set
-  `JUGG_CHATGPT_REMOTE_SIGN_IN=1` to force the remote pop-up instead.
-- No bot-check evasion: the browser identifies as what it is. If ChatGPT shows a human check, the
-  worker stops (`blocked`), image generation pauses 30 minutes, and the owner completes the check
-  themselves in the pop-up (which clears the pause).
-- Chromium runs with its own sandbox on; on hosts without unprivileged user namespaces it falls
-  back to no sandbox and logs a warning. Whether the sandbox starts inside the hardened
-  `juggernaught.service` (SystemCallFilter=@system-service) is not yet verified on a real host.
-  The worker opens chatgpt.com; the pop-up's own navigation command only allows chatgpt.com and
-  auth.openai.com, though the owner's clicks can follow ChatGPT's sign-in to Google, Apple or
-  Microsoft.
-- Pacing is persisted in SQLite (`image_generations`, `image_cooldowns`) and fails closed: if the
-  history can't be read, no image is made.
-- Supply chain: `playwright-core` pinned by the npm lockfile (integrity hash), Node.js pinned by
-  SHA-256 from nodejs.org, Chromium from Playwright's own CDN for that Playwright version (verified
-  by Playwright, not by us).
+- No browser automation and no ChatGPT credentials on the box. `generate_image` stores a request
+  (`image_handoffs`) and the chat shows an Open in ChatGPT link (`https://chatgpt.com/?q=` with the
+  prompt URL-encoded); the owner makes the image in their own browser.
+- The owner's image comes back through `POST /files/handoff/{id}`: session cookie required
+  (`SameSite=Strict`, so no cross-site posts), 25 MB body limit, decoded with a 50-megapixel cap,
+  re-encoded to PNG (drops EXIF and other metadata), filed through the normal brand gate into
+  Assets, one image per request, audit-logged (`images.handoff_added`).
+- The optional OpenAI Images API key is sealed like other provider secrets; API generations are
+  paced (`image_generations`, `image_cooldowns`) and the pacing fails closed.
+- An earlier Playwright worker that drove ChatGPT was removed: ChatGPT's Cloudflare check and
+  Google sign-in block automated browsers, and we don't build bot-check evasion.
 
 What sealing does not protect: a root attacker on the running box can read the decrypted credentials
 from the service's ramfs or its memory. Sealing defends the disk, backups of the disk and offline

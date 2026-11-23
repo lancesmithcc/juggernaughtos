@@ -1,4 +1,4 @@
-use crate::api::{get_overview, image_status, start_turn, ApprovalView, AssetCard, StreamEvent, ToolActivity};
+use crate::api::{get_overview, handoff_use_api, start_turn, ApprovalView, AssetCard, HandoffView, StreamEvent, ToolActivity};
 use crate::pages::assets::{ApprovalCard, AssetTile};
 use leptos::prelude::*;
 
@@ -12,13 +12,17 @@ struct Msg {
     streaming: RwSignal<bool>,
     assets: RwSignal<Vec<AssetCard>>,
     approvals: RwSignal<Vec<ApprovalView>>,
-    /// An image needed ChatGPT and it isn't connected: show the Connect card.
-    needs_connect: RwSignal<bool>,
+    /// Images for the owner to make in ChatGPT and drop back here.
+    handoffs: RwSignal<Vec<HandoffView>>,
 }
+
+/// Set when the owner adds a hand-off image, so the chat can tell the agent.
+#[derive(Clone, Copy)]
+struct HandoffAdded(RwSignal<Option<String>>);
 
 impl Msg {
     fn new(id: usize, user: bool, text: String) -> Self {
-        Self { id, user, text: RwSignal::new(text), tools: RwSignal::new(vec![]), live: RwSignal::new(None), streaming: RwSignal::new(!user), assets: RwSignal::new(vec![]), approvals: RwSignal::new(vec![]), needs_connect: RwSignal::new(false) }
+        Self { id, user, text: RwSignal::new(text), tools: RwSignal::new(vec![]), live: RwSignal::new(None), streaming: RwSignal::new(!user), assets: RwSignal::new(vec![]), approvals: RwSignal::new(vec![]), handoffs: RwSignal::new(vec![]) }
     }
 }
 
@@ -30,9 +34,8 @@ pub fn ChatPage() -> impl IntoView {
     let conversation = RwSignal::new(None::<String>);
     let busy = RwSignal::new(false);
     let next_id = StoredValue::new(0usize);
-    let chatgpt = use_context::<crate::pages::panels::ChatGptPrompt>();
-    // Set when an image failed for want of ChatGPT; once the owner connects, carry on.
-    let retry_image = StoredValue::new(false);
+    let added = RwSignal::new(None::<String>);
+    provide_context(HandoffAdded(added));
 
     let submit = move |text: String| {
         let text = text.trim().to_string();
@@ -56,22 +59,6 @@ pub fn ChatPage() -> impl IntoView {
                         StreamEvent::ToolStarted { name } => reply.live.set(Some(format!("Using {}…", name.replace('_', " ")))),
                         StreamEvent::ToolFinished { name, summary, is_error } => {
                             reply.live.set(None);
-                            // An image needs the owner's ChatGPT: if it isn't connected, ask right away.
-                            if name.ends_with("generate_image") {
-                                let failed = is_error || summary.contains("No image this time");
-                                leptos::task::spawn_local(async move {
-                                    let Ok(st) = image_status().await else { return };
-                                    if !(st.installed && st.session == "signed_in") {
-                                        reply.needs_connect.set(true);
-                                        if failed {
-                                            retry_image.set_value(true);
-                                            if let Some(p) = chatgpt {
-                                                p.open.set(true);
-                                            }
-                                        }
-                                    }
-                                });
-                            }
                             reply.tools.update(|t| t.push(ToolActivity { name, summary: summary.chars().take(240).collect(), is_error }));
                         }
                         StreamEvent::ApprovalRequired { tool, summary } => {
@@ -85,6 +72,7 @@ pub fn ChatPage() -> impl IntoView {
                         }
                         StreamEvent::Assets { items } => reply.assets.update(|a| a.extend(items)),
                         StreamEvent::Approvals { items } => reply.approvals.update(|a| a.extend(items)),
+                        StreamEvent::Handoffs { items } => reply.handoffs.update(|h| h.extend(items)),
                         StreamEvent::Usage {} => {}
                     });
                 }
@@ -97,21 +85,18 @@ pub fn ChatPage() -> impl IntoView {
         });
     };
 
-    if let Some(p) = chatgpt {
-        Effect::new(move |prev: Option<u32>| {
-            let n = p.connected.get();
-            if prev.is_some_and(|before| before != n) && retry_image.get_value() {
-                retry_image.set_value(false);
-                messages.update(|m| {
-                    for msg in m.iter() {
-                        msg.needs_connect.set(false);
-                    }
-                });
-                submit("ChatGPT is connected now. Please go ahead and make the image I asked for.".into());
+    // The owner added an image from ChatGPT: let the agent carry on with it.
+    // Run it under the page's owner: signals made inside an Effect are disposed when it re-runs.
+    let page_owner = Owner::current();
+    Effect::new(move |_| {
+        if let Some(text) = added.get() {
+            added.set(None);
+            match &page_owner {
+                Some(o) => o.with(|| submit(text)),
+                None => submit(text),
             }
-            n
-        });
-    }
+        }
+    });
 
     // Server renders a neutral greeting; the browser swaps in time-of-day (no hydration mismatch).
     let greet = RwSignal::new("Welcome back.");
@@ -191,8 +176,7 @@ fn Message(msg: Msg) -> impl IntoView {
     if msg.user {
         return view! { <div class="msg user"><div class="bubble">{move || msg.text.get()}</div></div> }.into_any();
     }
-    let Msg { text, tools, live, streaming, assets, approvals, needs_connect, .. } = msg;
-    let chatgpt = use_context::<crate::pages::panels::ChatGptPrompt>();
+    let Msg { text, tools, live, streaming, assets, approvals, handoffs, .. } = msg;
     let waiting = move || streaming.get() && text.with(|t| t.is_empty()) && tools.with(|t| t.is_empty());
     view! {
         <div class="msg assistant" class:streaming=move || streaming.get()>
@@ -209,13 +193,11 @@ fn Message(msg: Msg) -> impl IntoView {
                 <Show when=waiting fallback=move || view! { <div class="text md" inner_html=move || crate::markdown::render(&text.get())></div> }>
                     <span class="dots" aria-label="Working"><i></i><i></i><i></i></span>
                 </Show>
-                <Show when=move || needs_connect.get()>
-                    <div class="connect-card">
-                        <div>
-                            <strong>"Connect your ChatGPT for images"</strong>
-                            <p>"New images are made with GPT Image through your own ChatGPT account. Connect it once (about a minute) and I'll carry on with your image."</p>
-                        </div>
-                        <button class="btn primary" type="button" on:click=move |_| { if let Some(p) = chatgpt { p.open.set(true); } }>"Connect ChatGPT"</button>
+                <Show when=move || !handoffs.with(|h| h.is_empty())>
+                    <div class="chat-handoffs">
+                        <For each=move || handoffs.get() key=|h| h.id.clone() let:h>
+                            <HandoffCard item=h assets=assets/>
+                        </For>
                     </div>
                 </Show>
                 <Show when=move || !approvals.with(|a| a.is_empty())>
@@ -236,6 +218,111 @@ fn Message(msg: Msg) -> impl IntoView {
         </div>
     }
     .into_any()
+}
+
+/// One image for the owner to make in their own ChatGPT, then drop back here.
+#[component]
+fn HandoffCard(item: HandoffView, assets: RwSignal<Vec<AssetCard>>) -> impl IntoView {
+    let added = use_context::<HandoffAdded>();
+    let done = RwSignal::new(item.status == "done");
+    let working = RwSignal::new(None::<&'static str>);
+    let msg = RwSignal::new(None::<String>);
+    let over = RwSignal::new(false);
+    let copied = RwSignal::new(false);
+    let (id, title, prompt, url, api) = (item.id.clone(), item.title.clone(), item.prompt.clone(), item.open_url.clone(), item.api_key_set);
+    let finish = move |v: HandoffView| {
+        working.set(None);
+        done.set(true);
+        if let Some(a) = v.asset.clone() {
+            let name = a.title.clone();
+            let aid = a.id.clone();
+            assets.update(|x| x.push(a));
+            if let Some(HandoffAdded(s)) = added {
+                s.set(Some(format!("I added the image from ChatGPT for “{name}”. It's in Assets now (asset {aid}).")));
+            }
+        }
+    };
+    let take = {
+        let id = id.clone();
+        move |ev: leptos::wasm_bindgen::JsValue| {
+            #[cfg(feature = "hydrate")]
+            {
+                match crate::client::image_in(&ev) {
+                    Ok(Some(file)) => {
+                        let id = id.clone();
+                        working.set(Some("Adding your image…"));
+                        msg.set(None);
+                        leptos::task::spawn_local(async move {
+                            match crate::client::upload_handoff(&id, &file).await {
+                                Ok(v) => finish(v),
+                                Err(e) => {
+                                    working.set(None);
+                                    msg.set(Some(e));
+                                }
+                            }
+                        });
+                    }
+                    Ok(None) => msg.set(Some("That wasn't an image. Drop or paste the picture itself.".into())),
+                    Err(_) => msg.set(Some("Your browser only passed the image's web address. In ChatGPT, right-click the image → Copy Image, then click here and paste (⌘V). Or download it and drop the file.".into())),
+                }
+            }
+            #[cfg(not(feature = "hydrate"))]
+            let _ = (ev, &id);
+        }
+    };
+    let (t1, t2, t3) = (take.clone(), take.clone(), take);
+    let prompt_copy = prompt.clone();
+    let open_copy = prompt.clone();
+    let use_api = {
+        let id = id.clone();
+        move |_| {
+            let id = id.clone();
+            working.set(Some("Making it with your API key…"));
+            msg.set(None);
+            leptos::task::spawn_local(async move {
+                match handoff_use_api(id).await {
+                    Ok(v) => finish(v),
+                    Err(e) => {
+                        working.set(None);
+                        msg.set(Some(e.to_string().replace("error running server function: ", "")));
+                    }
+                }
+            });
+        }
+    };
+    let input_id = format!("handoff-file-{id}");
+    let input_for = input_id.clone();
+    view! {
+        <div class="handoff" class:done=move || done.get()>
+            <Show when=move || !done.get() fallback=|| view! { <p class="handoff-done">"✓ Added to Assets"</p> }>
+                <div class="handoff-head">
+                    <span class="handoff-badge" aria-hidden="true">"GPT"</span>
+                    <div>
+                        <strong>{format!("Make “{title}” in ChatGPT")}</strong>
+                        <p>"1 · Open ChatGPT (the prompt is filled in and copied).  2 · Send it.  3 · Bring the image back here."</p>
+                    </div>
+                </div>
+                <div class="row-actions">
+                    <a class="btn primary" href=url.clone() target="_blank" rel="noopener noreferrer" on:click={ let p = open_copy.clone(); move |_| crate::client::copy(&p) }>"Open in ChatGPT ↗"</a>
+                    <button class="btn ghost" type="button" on:click={ let p = prompt_copy.clone(); move |_| { crate::client::copy(&p); copied.set(true); } }>{move || if copied.get() { "Copied" } else { "Copy prompt" }}</button>
+                    {api.then(|| view! { <button class="btn ghost" type="button" disabled=move || working.get().is_some() on:click=use_api.clone()>"Make it automatically"</button> })}
+                </div>
+                <details class="handoff-prompt"><summary>"See the prompt"</summary><p>{prompt.clone()}</p></details>
+                <label class="dropzone" class:over=move || over.get() for=input_for.clone() tabindex="0"
+                    on:dragover=move |ev: leptos::ev::DragEvent| { ev.prevent_default(); over.set(true); }
+                    on:dragleave=move |_| over.set(false)
+                    on:drop={ let t = t1.clone(); move |ev: leptos::ev::DragEvent| { ev.prevent_default(); over.set(false); t(leptos::wasm_bindgen::JsValue::from(ev)); } }
+                    on:paste={ let t = t2.clone(); move |ev: leptos::ev::ClipboardEvent| { ev.prevent_default(); t(leptos::wasm_bindgen::JsValue::from(ev)); } }>
+                    {move || match working.get() {
+                        Some(w) => view! { <span><span class="spinner"></span>{w}</span> }.into_any(),
+                        None => view! { <span><strong>"Drop the image here"</strong>" or click to choose it · paste with ⌘V"</span> }.into_any(),
+                    }}
+                </label>
+                <input id=input_id.clone() class="sr-only" type="file" accept="image/png,image/jpeg,image/webp,image/gif" on:change={ let t = t3.clone(); move |ev: leptos::ev::Event| t(leptos::wasm_bindgen::JsValue::from(ev)) }/>
+                {move || msg.get().map(|m| view! { <p class="hint err" role="alert">{m}</p> })}
+            </Show>
+        </div>
+    }
 }
 
 fn greeting() -> &'static str {

@@ -719,6 +719,10 @@ async fn run_turn(st: AppState, turn: Turn, out: tokio::sync::mpsc::Sender<Agent
     if !assets.is_empty() {
         let _ = out.send(AgentEvent::Assets { items: serde_json::to_value(&assets).unwrap_or_default() }).await;
     }
+    let handoffs = crate::images::handoffs_since(&st, &conv, started).await;
+    if !handoffs.is_empty() {
+        let _ = out.send(AgentEvent::Handoffs { items: serde_json::to_value(&handoffs).unwrap_or_default() }).await;
+    }
     let approvals = crate::site::approvals_since(&st, &conv, started).await;
     if !approvals.is_empty() {
         let _ = out.send(AgentEvent::Approvals { items: serde_json::to_value(&approvals).unwrap_or_default() }).await;

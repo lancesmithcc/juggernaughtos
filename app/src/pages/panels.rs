@@ -1,6 +1,6 @@
 //! Sidebar panels. Everything here is also doable from chat; panels are for looking.
 
-use crate::api::{chatgpt_check, chatgpt_install, chatgpt_signin_frame, chatgpt_signin_input, chatgpt_signin_start, image_settings, image_status, save_image_settings, get_site, publish_site, rollback_site, get_brand, get_providers, get_security, get_sign_in_methods, get_standards, get_tools, save_provider_settings};
+use crate::api::{image_settings, save_image_settings, get_site, publish_site, rollback_site, get_brand, get_providers, get_security, get_sign_in_methods, get_standards, get_tools, save_provider_settings};
 use crate::pages::account::{AddPasskey, RegenerateRecovery, TotpEnroll};
 use leptos::prelude::*;
 
@@ -323,288 +323,15 @@ fn SignIn() -> impl IntoView {
     }
 }
 
-/// App-wide "Connect ChatGPT" pop-up. Chat opens it when an image needs it and is told
-/// (via `connected`) when the owner finishes, so the image request can carry on.
-#[derive(Clone, Copy)]
-pub struct ChatGptPrompt {
-    pub open: RwSignal<bool>,
-    pub connected: RwSignal<u32>,
-}
-
-impl ChatGptPrompt {
-    pub fn new() -> Self {
-        Self { open: RwSignal::new(false), connected: RwSignal::new(0) }
-    }
-}
-
+/// How images are made: the owner's own ChatGPT, by hand-off. No sign-in needed here.
 #[component]
 fn ChatGptImages() -> impl IntoView {
-    let status = Resource::new(|| (), |_| image_status());
-    let prompt = use_context::<ChatGptPrompt>().map(|p| p.open).unwrap_or_else(|| RwSignal::new(false));
-    let msg = RwSignal::new(None::<String>);
-    // Refresh the status card whenever the pop-up closes.
-    Effect::new(move |prev: Option<bool>| {
-        let open = prompt.get();
-        if prev == Some(true) && !open {
-            status.refetch();
-        }
-        open
-    });
-    let check = move |_| {
-        msg.set(Some("Checking…".into()));
-        leptos::task::spawn_local(async move {
-            msg.set(Some(match chatgpt_check().await {
-                Ok(s) if s == "signed_in" => "Connected: signed in to ChatGPT.".into(),
-                Ok(s) if s == "bot_check" => "ChatGPT wants a quick human check. Press Connect ChatGPT.".into(),
-                Ok(_) => "Not connected yet. Press Connect ChatGPT.".into(),
-                Err(e) => e.to_string(),
-            }));
-            status.refetch();
-        });
-    };
     view! {
         <div class="intelligence chatgpt-images">
-            <p class="hint">"New images (hero photos, textures, icons, illustrations) are made with GPT Image through your own ChatGPT account, in a private browser on this server. You connect once; nothing you type is stored. Requests are paced so your account isn't flooded. Note: OpenAI's terms don't allow automated use of ChatGPT, so there's some risk your account gets limited."</p>
-            <Suspense fallback=|| view! { <div class="skeleton"></div> }>
-                {move || Suspend::new(async move {
-                    status.await.map(|s| {
-                        let (ready, label) = match (s.installed, s.session.as_str()) {
-                            (false, _) => (false, "Not set up yet: press Connect ChatGPT".to_string()),
-                            (true, "signed_in") => (true, "ChatGPT connected (default image maker)".to_string()),
-                            (true, "bot_check") => (false, "ChatGPT wants a quick human check".to_string()),
-                            (true, "signed_out") => (false, "ChatGPT not connected yet".to_string()),
-                            _ => (false, "ChatGPT: press Check connection".to_string()),
-                        };
-                        let paused = s.paused_until.map(|_| format!("Paused: {}. ", s.paused_reason.clone().unwrap_or_default()));
-                        view! {
-                            <p class="provider-status" data-ready=ready.to_string()><span class="dot"></span>{label}</p>
-                            <p class="hint">{paused}{format!("{} of {} this hour · {} of {} today · one at a time, at least {} s apart{}", s.used_hour, s.per_hour, s.used_day, s.per_day, s.min_gap_secs, if s.api_key_set { " · API key set as fallback" } else { "" })}</p>
-                            <div class="row-actions">
-                                <button class="btn primary" type="button" on:click=move |_| prompt.set(true)>{if ready { "Reconnect ChatGPT" } else { "Connect ChatGPT" }}</button>
-                                {s.installed.then(|| view! { <button class="btn ghost" type="button" on:click=check>"Check connection"</button> })}
-                            </div>
-                        }
-                    })
-                })}
-            </Suspense>
-            {move || msg.get().map(|m| view! { <p class="hint" role="status">{m}</p> })}
+            <h3 class="sub-h">"Your ChatGPT"</h3>
+            <p class="hint">"When you ask for an image, I write the prompt with your brand's colours and imagery rules and give you an Open in ChatGPT button. Make the image there with your own account, then drop it back into the chat. It lands in Assets and gets checked against your brand like everything else. Nothing to connect: you're signed in to ChatGPT in your own browser."</p>
         </div>
     }
-}
-
-/// The pop-up: a live view of the server's private browser. The owner clicks on the
-/// picture and just types; keys go straight to the browser. Each step says what to do.
-#[component]
-pub fn ChatGptSignInDialog() -> impl IntoView {
-    let Some(ChatGptPrompt { open, connected }) = use_context::<ChatGptPrompt>() else { return ().into_any() };
-    let frame = RwSignal::new(None::<String>);
-    let here = RwSignal::new(false);
-    let step = RwSignal::new(String::from("starting"));
-    let err = RwSignal::new(None::<String>);
-    let poll = StoredValue::new(None::<IntervalHandle>);
-    let screen = NodeRef::<leptos::html::Div>::new();
-
-    let send = move |kind: &'static str, x: f64, y: f64, text: String| {
-        leptos::task::spawn_local(async move {
-            if let Err(e) = chatgpt_signin_input(kind.into(), x, y, text).await {
-                err.set(Some(e.to_string()));
-            }
-        });
-    };
-    let stop_polling = move || {
-        if let Some(h) = poll.get_value() {
-            h.clear();
-            poll.set_value(None);
-        }
-    };
-    let tick = move || {
-        leptos::task::spawn_local(async move {
-            let Ok(f) = chatgpt_signin_frame().await else { return };
-            if f.jpeg_b64.is_some() {
-                frame.set(f.jpeg_b64);
-            }
-            here.set(f.here);
-            step.set(f.step.clone());
-            if f.step == "done" {
-                stop_polling();
-                connected.update(|n| *n += 1);
-                set_timeout(move || open.set(false), std::time::Duration::from_millis(2200));
-            } else if !f.active && (frame.get_untracked().is_some() || f.here) && f.step != "starting" {
-                stop_polling();
-            }
-        });
-    };
-    let begin_sign_in = move || {
-        step.set("starting".into());
-        leptos::task::spawn_local(async move {
-            match chatgpt_signin_start().await {
-                Ok(()) => {
-                    if poll.get_value().is_none() {
-                        poll.set_value(set_interval_with_handle(tick, std::time::Duration::from_millis(700)).ok());
-                    }
-                    if let Some(el) = screen.get_untracked() {
-                        let _ = el.focus();
-                    }
-                }
-                Err(e) => {
-                    step.set("closed".into());
-                    err.set(Some(e.to_string()));
-                }
-            }
-        });
-    };
-    // First time on this server: set the image maker up, then go straight to sign-in.
-    let setup_poll = StoredValue::new(None::<IntervalHandle>);
-    let stop_setup = move || {
-        if let Some(h) = setup_poll.get_value() {
-            h.clear();
-            setup_poll.set_value(None);
-        }
-    };
-    let setup_tick = move || {
-        leptos::task::spawn_local(async move {
-            let Ok(s) = image_status().await else { return };
-            if s.installed || s.install == "ok" {
-                stop_setup();
-                begin_sign_in();
-            } else if let Some(why) = s.install.strip_prefix("failed: ") {
-                stop_setup();
-                step.set("setup_failed".into());
-                err.set(Some(why.to_string()));
-            }
-        });
-    };
-    Effect::new(move |_| {
-        if open.get() {
-            frame.set(None);
-            step.set("starting".into());
-            err.set(None);
-            leptos::task::spawn_local(async move {
-                match image_status().await {
-                    Ok(s) if !s.installed => {
-                        step.set("setup".into());
-                        let _ = chatgpt_install().await;
-                        if setup_poll.get_value().is_none() {
-                            setup_poll.set_value(set_interval_with_handle(setup_tick, std::time::Duration::from_millis(2000)).ok());
-                        }
-                    }
-                    _ => begin_sign_in(),
-                }
-            });
-        } else {
-            stop_polling();
-            stop_setup();
-        }
-    });
-    let close = move || {
-        if !matches!(step.get_untracked().as_str(), "done" | "setup" | "setup_failed" | "closed") {
-            send("stop", 0.0, 0.0, String::new());
-        }
-        open.set(false);
-    };
-    let click = move |ev: leptos::ev::MouseEvent| {
-        let el = event_target::<leptos::web_sys::Element>(&ev);
-        let (w, h) = (el.client_width().max(1) as f64, el.client_height().max(1) as f64);
-        send("click", ev.offset_x() as f64 * 1280.0 / w, ev.offset_y() as f64 * 900.0 / h, String::new());
-        if let Some(s) = screen.get_untracked() {
-            let _ = s.focus();
-        }
-    };
-    let keydown = move |ev: leptos::ev::KeyboardEvent| {
-        if ev.meta_key() || ev.ctrl_key() {
-            return; // let the owner paste with ⌘V / Ctrl+V (handled by on:paste)
-        }
-        let k = ev.key();
-        if k == "Escape" {
-            ev.prevent_default();
-            close();
-            return;
-        }
-        if k.chars().count() == 1 {
-            ev.prevent_default();
-            send("text", 0.0, 0.0, k);
-        } else if matches!(k.as_str(), "Enter" | "Tab" | "Backspace" | "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight") {
-            ev.prevent_default();
-            let k = if k == "Tab" && ev.shift_key() { "Shift+Tab".to_string() } else { k };
-            send("key", 0.0, 0.0, k);
-        }
-    };
-    let paste = move |ev: leptos::ev::ClipboardEvent| {
-        #[cfg(feature = "hydrate")]
-        if let Some(t) = ev.clipboard_data().and_then(|d| d.get_data("text").ok()) {
-            ev.prevent_default();
-            send("text", 0.0, 0.0, t);
-        }
-        #[cfg(not(feature = "hydrate"))]
-        let _ = ev;
-    };
-    let wheel = move |ev: leptos::ev::WheelEvent| {
-        ev.prevent_default();
-        send("scroll", 0.0, ev.delta_y(), String::new());
-    };
-    let instruction = move || match step.get().as_str() {
-        "starting" if here.get() => "Opening a Chrome window on this computer…",
-        "log_in" if here.get() => "A Chrome window opened on this computer. Click “Log in” there.",
-        "signing_in" if here.get() => "Sign in in the Chrome window. If ChatGPT offers a passkey, use your fingerprint (Touch ID).",
-        "human_check" if here.get() => "ChatGPT wants to check you're human. Tick the box in the Chrome window.",
-        "closed" if here.get() => "The Chrome window closed before you were signed in. Press Try again.",
-        "setup" => "One-time setup: getting the image maker ready on your server (a few minutes the first time)…",
-        "setup_failed" => "Setup needs the server's admin once. Run this on the server, then press Try again:",
-        "starting" => "Opening a private browser on your server…",
-        "log_in" => "Click “Log in” on the picture, then sign in the way you usually do.",
-        "signing_in" => "Sign in: click a box on the picture and type. Email codes and Google/Apple sign-in work too.",
-        "human_check" => "ChatGPT wants to check you're human. Click the checkbox on the picture yourself.",
-        "done" => "Connected. Your images now come from your ChatGPT account.",
-        _ => "The browser closed. Press Try again.",
-    };
-    view! {
-        <Show when=move || open.get()>
-            <div class="modal-backdrop" on:click=move |_| close()>
-                <div class="modal chatgpt-modal" role="dialog" aria-modal="true" aria-labelledby="cg-title" on:click=|ev| ev.stop_propagation()>
-                    <header class="modal-head">
-                        <div>
-                            <h2 id="cg-title">"Connect ChatGPT"</h2>
-                            <ol class="cg-steps">
-                                <li class:on=move || matches!(step.get().as_str(), "setup" | "setup_failed")>"Set up"</li>
-                                <li class:on=move || matches!(step.get().as_str(), "starting" | "log_in" | "signing_in")>"Sign in"</li>
-                                <li class:on=move || step.get() == "human_check">"Human check, if asked"</li>
-                                <li class:on=move || step.get() == "done">"Done"</li>
-                            </ol>
-                        </div>
-                        <button class="btn small ghost" type="button" on:click=move |_| close()>{move || if step.get() == "done" { "Close" } else { "Cancel" }}</button>
-                    </header>
-                    <p class="modal-say" role="status" data-step=move || step.get()>{instruction}</p>
-                    {move || (step.get() == "setup_failed").then(|| view! {
-                        <pre class="cmd"><code>"sudo juggernaught tools install chatgpt-image"</code></pre>
-                        <details class="hint"><summary>"Why"</summary>{move || err.get()}</details>
-                    })}
-                    {move || err.get().filter(|_| step.get() != "setup_failed").map(|e| view! { <p class="hint err" role="alert">{e}</p> })}
-                    <Show when=move || here.get() && !matches!(step.get().as_str(), "setup" | "setup_failed")>
-                        <div class="here-panel">
-                            <div class="here-icon" aria-hidden="true">{move || if step.get() == "done" { "✓" } else { "⌘" }}</div>
-                            <div>
-                                <strong>{move || if step.get() == "done" { "Signed in" } else { "Look for the Chrome window" }}</strong>
-                                <p>"Sign in to ChatGPT there the way you normally do. Passkeys with Touch ID, Apple, Google and email codes all work. This window closes by itself when you're in."</p>
-                            </div>
-                        </div>
-                    </Show>
-                    <div class="remote-browser" class:hidden=move || here.get() && !matches!(step.get().as_str(), "setup" | "setup_failed") tabindex="0" node_ref=screen on:keydown=keydown on:paste=paste>
-                        {move || match (frame.get(), step.get().as_str()) {
-                            (Some(f), _) => view! { <img src=format!("data:image/jpeg;base64,{f}") alt="Your server's private browser showing ChatGPT" width="1280" height="900" on:click=click on:wheel=wheel/> }.into_any(),
-                            (None, "setup") => view! { <div class="remote-wait"><span class="spinner"></span>"Setting up the image maker…"</div> }.into_any(),
-                            (None, "setup_failed" | "closed") => view! { <div class="remote-wait">"Nothing running yet."</div> }.into_any(),
-                            _ => view! { <div class="remote-wait"><span class="spinner"></span>"Starting the browser…"</div> }.into_any(),
-                        }}
-                    </div>
-                    <Show when=move || !here.get()>
-                        <p class="hint">"Click on the picture, then just type: your keys and pastes go to that browser and are never saved. Scroll with your mouse or trackpad."</p>
-                    </Show>
-                    {move || matches!(step.get().as_str(), "closed" | "setup_failed").then(|| view! { <button class="btn primary" type="button" on:click=move |_| { open.set(false); set_timeout(move || open.set(true), std::time::Duration::from_millis(50)); }>"Try again"</button> })}
-                </div>
-            </div>
-        </Show>
-    }
-    .into_any()
 }
 
 #[component]
@@ -629,8 +356,8 @@ fn ImageSettings() -> impl IntoView {
     };
     view! {
         <form class="intelligence" on:submit=save>
-            <h3 class="sub-h">"OpenAI API key (optional fallback)"</h3>
-            <p class="hint">"Only used when ChatGPT can't make an image: not signed in, paused, or out of images for now. Stored encrypted. Logos, cards, posts and the brand book never need an image model."</p>
+            <h3 class="sub-h">"OpenAI API key (optional)"</h3>
+            <p class="hint">"With a key saved, each image request also gets a Make it automatically button that uses the OpenAI Images API instead of ChatGPT (billed to your key, paced). Stored encrypted. Logos, cards, posts and the brand book never need an image model."</p>
             <div class="provider-fields">
                 <label>"OpenAI API key"
                     <input type="password" autocomplete="off" placeholder=move || if current.get().and_then(|r| r.ok()).is_some_and(|c| c.0) { "Saved · enter a new key to replace" } else { "sk-…" }

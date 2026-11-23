@@ -84,7 +84,7 @@ clap = { version = "4", features = ["derive", "env"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif", "bmp"] }
 regex = "1"
 pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
-web-sys = { version = "0.3", features = ["EventSource", "MessageEvent", "Event", "Window", "Location", "MouseEvent", "WheelEvent", "KeyboardEvent", "ClipboardEvent", "DataTransfer", "Element", "HtmlElement"] }
+web-sys = { version = "0.3", features = ["EventSource", "MessageEvent", "Event", "Window", "Location", "MouseEvent", "WheelEvent", "KeyboardEvent", "ClipboardEvent", "DataTransfer", "Element", "HtmlElement", "Storage"] }
 js-sys = "0.3"
 wasm-bindgen-futures = "0.4"
 rustls-acme = { version = "0.15", default-features = false, features = ["aws-lc-rs", "tls12", "webpki-roots", "axum"] }

@@ -109,7 +109,6 @@ pub fn install(tools_dir: &Path, name: &str, t: &LockedTool) -> Result<String, S
                 run(Command::new("npm").args(["install", "--no-audit", "--no-fund", "--omit=dev", "--prefix"]).arg(&staging).arg(format!("{pkg}@{}", t.version)))?;
                 Ok(())
             }
-            "bundled-node" => install_bundled_node(name, t, &staging, a),
             other => Err(t.note.clone().unwrap_or_else(|| format!("install method `{other}` is not supported"))),
         }
     })();
@@ -127,89 +126,12 @@ pub fn install(tools_dir: &Path, name: &str, t: &LockedTool) -> Result<String, S
     Ok(format!("{name} {} installed and verified", t.version))
 }
 
-/// Where a bundled tool's source lives: `tools/<name>` next to the release (or the
-/// repository in development).
-pub fn bundled_source(name: &str) -> Option<PathBuf> {
-    let exe = std::env::current_exe().ok()?;
-    let mut dirs: Vec<PathBuf> = exe.ancestors().skip(1).take(4).map(Path::to_path_buf).collect();
-    dirs.extend(std::env::current_dir().ok());
-    dirs.into_iter().map(|d| d.join("tools").join(name)).find(|p| p.join("package-lock.json").exists())
-}
-
-fn install_bundled_node(name: &str, t: &LockedTool, staging: &Path, a: &str) -> Result<(), String> {
-    let src = bundled_source(name).ok_or_else(|| format!("tools/{name} is missing from this release"))?;
-    for entry in std::fs::read_dir(&src).map_err(|e| e.to_string())?.flatten() {
-        let f = entry.file_name().to_string_lossy().to_string();
-        if entry.path().is_file() && !f.starts_with('.') {
-            std::fs::copy(entry.path(), staging.join(&f)).map_err(|e| e.to_string())?;
-        }
-    }
-    // Pinned Node.js (distro packages are often too old for Playwright). Pins are for
-    // Linux servers; a macOS development machine uses its own Node 20+.
-    if cfg!(target_os = "macos") {
-        let v = run(Command::new("node").arg("--version")).map_err(|_| "Node.js 20+ is required".to_string())?;
-        let major: u32 = v.trim().trim_start_matches('v').split('.').next().and_then(|m| m.parse().ok()).unwrap_or(0);
-        if major < 20 {
-            return Err(format!("Node.js 20+ is required, found {}", v.trim()));
-        }
-        // The wrapper looks for node next to itself; point that at this Mac's Node.
-        let system_node = run(Command::new("sh").args(["-c", "command -v node"]))?.trim().to_string();
-        std::fs::create_dir_all(staging.join("node/bin")).map_err(|e| e.to_string())?;
-        #[cfg(unix)]
-        std::os::unix::fs::symlink(&system_node, staging.join("node/bin/node")).map_err(|e| e.to_string())?;
-        run(Command::new("npm").args(["ci", "--omit=dev", "--no-audit", "--no-fund", "--ignore-scripts"]).current_dir(staging))?;
-        run(Command::new("node").arg(staging.join("node_modules/playwright-core/cli.js")).args(["install", "--no-shell", "chromium"]).current_dir(staging).env("PLAYWRIGHT_BROWSERS_PATH", staging.join("browsers")))?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(staging.join(&t.bin), std::fs::Permissions::from_mode(0o755));
-        }
-        return Ok(());
-    }
-    let d = t.dist.as_ref().ok_or("lock entry has no dist")?;
-    let nv = d.node_version.as_ref().ok_or("lock entry has no node_version")?;
-    let (node_arch, pin) = if a == "aarch64" { ("arm64", &d.node_sha256_aarch64) } else { ("x64", &d.node_sha256_x86_64) };
-    let pin = pin.as_ref().ok_or("no pinned Node.js hash for this CPU")?;
-    let os = if cfg!(target_os = "macos") { "darwin" } else { "linux" };
-    let asset = format!("node-{nv}-{os}-{node_arch}.tar.gz");
-    let file = staging.join(".node.tar.gz");
-    run(Command::new("curl").args(["-fsSL", "--proto", "=https", "--tlsv1.2", "--retry", "3", "-o"]).arg(&file).arg(format!("https://nodejs.org/dist/{nv}/{asset}")))?;
-    let got = sha256_file(&file)?;
-    if &got != pin {
-        return Err(format!("checksum mismatch for {asset}: expected {pin}, got {got}. Refusing to install."));
-    }
-    std::fs::create_dir_all(staging.join("node")).map_err(|e| e.to_string())?;
-    run(Command::new("tar").arg("-xzf").arg(&file).args(["--strip-components=1", "-C"]).arg(staging.join("node")))?;
-    let _ = std::fs::remove_file(&file);
-    let node = staging.join("node/bin/node");
-    let npm = staging.join("node/lib/node_modules/npm/bin/npm-cli.js");
-    let path = format!("{}:/usr/local/bin:/usr/bin:/bin", staging.join("node/bin").display());
-    // `npm ci` installs exactly the lockfile and checks every package's integrity hash.
-    run(Command::new(&node).arg(&npm).args(["ci", "--omit=dev", "--no-audit", "--no-fund", "--ignore-scripts"]).current_dir(staging).env("PATH", &path))?;
-    let cli = staging.join("node_modules/playwright-core/cli.js");
-    if cli.exists() {
-        let browsers = staging.join("browsers");
-        run(Command::new(&node).arg(&cli).args(["install", "--no-shell", "chromium"]).current_dir(staging).env("PATH", &path).env("PLAYWRIGHT_BROWSERS_PATH", &browsers))?;
-        // Shared libraries Chromium needs (apt; only possible as root on Linux).
-        if cfg!(target_os = "linux") && run(Command::new("id").arg("-u")).map(|u| u.trim() == "0").unwrap_or(false) {
-            run(Command::new(&node).arg(&cli).args(["install-deps", "chromium"]).current_dir(staging).env("PATH", &path).env("DEBIAN_FRONTEND", "noninteractive"))?;
-        }
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(staging.join(&t.bin), std::fs::Permissions::from_mode(0o755));
-    }
-    Ok(())
-}
-
 fn canary_at(dir: &Path, t: &LockedTool) -> Result<String, String> {
     let bin = dir.join(&t.bin);
     if !bin.exists() {
         return Err(format!("{} missing after install", t.bin));
     }
-    let args = t.canary.clone().unwrap_or_else(|| vec!["--help".into()]);
-    let out = Command::new(&bin).args(&args).env_clear().env("PATH", "/usr/bin:/bin").env("HOME", dir).output().map_err(|e| e.to_string())?;
+    let out = Command::new(&bin).arg("--help").env_clear().env("PATH", "/usr/bin:/bin").env("HOME", dir).output().map_err(|e| e.to_string())?;
     let text = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
     if out.status.success() || text.to_ascii_lowercase().contains("usage") {
         Ok(text.lines().next().unwrap_or_default().to_string())

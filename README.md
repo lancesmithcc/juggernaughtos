@@ -117,9 +117,9 @@ sudo juggernaught tools install --all
 Built in (always available, no API keys): logo concepts and the full logo set, brand guidelines
 PDF, social posts at every platform size, business cards (print-ready PDF), email signatures,
 logo vectorizing, brand guide, CSS brand check. Photo-style images, textures and icons are made with
-GPT Image through your own ChatGPT account (connect once: Settings → Image generation → Connect
-ChatGPT; a pop-up also appears in chat the first time an image needs it). An OpenAI API key is an
-optional fallback. PhotoCraft, VectorCraft, PdfCraft and impeccable install from their
+GPT Image in your own ChatGPT: ask in chat and you get an Open in ChatGPT button with the
+brand-aware prompt filled in; make it there and drop the image back into the chat. With an OpenAI
+API key saved, a Make it automatically button uses the Images API instead. PhotoCraft, VectorCraft, PdfCraft and impeccable install from their
 upstream releases; HyperFrames video needs Node 20+; Kokoro voice and open-design are not yet
 available as server binaries upstream.
 
@@ -154,13 +154,12 @@ A spare computer works the same; a UPS and an off-site backup target are strongl
    own login), Juggernaught never handles those credentials, and API-key providers
    (OpenRouter / Anthropic / OpenAI) are the default for anything resold or managed.
    Get a quick legal read before selling managed installs on subscriptions.
-2. **GPT Image via browser automation (decided: default).** Images come from the owner's own
-   ChatGPT session driven by Playwright (`tools/chatgpt-image`); the OpenAI Images API key is the
-   fallback. Risks the owner accepts: OpenAI's terms restrict automated access to ChatGPT, so the
-   account can be limited; the ChatGPT page changes without notice; ChatGPT may ask headless
-   browsers for a human check, which the owner completes in the Connect ChatGPT pop-up. Juggernaught
-   does not evade bot checks, and paces requests: one at a time, ≥ 90 s apart, ≤ 10 an hour and
-   ≤ 40 a day, with a pause whenever ChatGPT reports a limit or a check.
+2. **GPT Image by hand-off, not browser automation (decided).** The agent writes the prompt and
+   the owner makes the image in their own ChatGPT (one click opens it with the prompt filled in),
+   then drops it back into the chat. Driving ChatGPT with Playwright was tried and dropped:
+   ChatGPT's Cloudflare check and Google sign-in both refuse automated browsers, getting past them
+   would mean disguising the automation, and OpenAI's terms restrict automated access anyway. The
+   OpenAI Images API key is the automatic option (billed to the key, paced: ≤ 60 an hour).
 3. **SQLite over PostgreSQL** (as chosen). Fine for one business per box; the schema stays
    portable if a hosted multi-tenant edition ever happens.
 4. **Licences.** Creative suite is MIT/Apache-2.0 (redistributable). Google Fonts are

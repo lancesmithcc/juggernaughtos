@@ -550,6 +550,7 @@ async fn main() {
                 .route("/auth/logout", post(logout))
                 .route("/api/chat/stream/{turn_id}", get(chat_stream))
                 .route("/files/asset/{id}", get(juggernaught::assets::serve))
+                .route("/files/handoff/{id}", post(juggernaught::images::upload).layer(axum::extract::DefaultBodyLimit::max(juggernaught::images::MAX_UPLOAD_BYTES + 1024)))
                 .route("/_preview", get(|st: axum::extract::State<AppState>, req: axum::extract::Request| async move { juggernaught::site::preview(st, axum::extract::Path(String::new()), req).await }))
                 .route("/_preview/{*rest}", get(juggernaught::site::preview))
                 .route("/files/asset/{id}/{variant}", get(juggernaught::assets::serve))

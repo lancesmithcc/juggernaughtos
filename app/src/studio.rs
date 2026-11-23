@@ -285,9 +285,10 @@ pub async fn save_image_key(env: &SiteEnv, key: Option<String>, model: Option<St
 #[async_trait]
 impl Tool for GenerateImage {
     fn spec(&self) -> ToolSpec {
-        spec("generate_image", "Generate ONE image (hero photo-style image, texture, icon, illustration, logo exploration) through the owner's ChatGPT account (GPT Image), constrained to the brand's palette and imagery rules. Results land in Assets for review. Images are paced to protect the owner's account: one at a time, about 90 seconds apart, at most 10 an hour and 40 a day, so each call can take a few minutes. Make one image, show it, and only make more when the owner asks; never request more than 3 in one reply.",
+        spec("generate_image", "Prepare ONE image (hero photo-style image, texture, icon, illustration, logo exploration) for the owner to make in their own ChatGPT (GPT Image). The brand's palette and imagery rules are written into the prompt for you. The owner gets an Open in ChatGPT button, makes the image there and drops it back into this chat; it then lands in Assets for review and you get a message naming it. Call once per image the owner needs (at most 3 per reply), then stop and tell the owner in one short sentence that the image is ready to make in ChatGPT. Never call again for the same image.",
             json!({"type":"object","required":["prompt"],"properties":{
                 "prompt":{"type":"string","description":"what to show; the brand rules are added automatically"},
+                "title":{"type":"string","description":"short name for the asset, e.g. 'Homepage hero'"},
                 "kind":{"type":"string","enum":["image","texture","icon_set","logo"]},
                 "shape":{"type":"string","enum":["square","landscape","portrait"]}}}), Risk::Create)
     }
@@ -296,22 +297,23 @@ impl Tool for GenerateImage {
         if prompt.is_empty() || prompt.len() > 2000 {
             return Err(ToolError::Args("prompt is required".into()));
         }
+        let kind = match args["kind"].as_str() {
+            Some(k @ ("texture" | "icon_set" | "logo")) => k,
+            _ => "image",
+        };
+        let shape = match args["shape"].as_str() {
+            Some(s @ ("landscape" | "portrait")) => s,
+            _ => "square",
+        };
+        let title: String = args["title"].as_str().filter(|t| !t.trim().is_empty()).unwrap_or(&prompt).trim().chars().take(60).collect();
+        let conversation = ctx.job_dir.file_name().map(|n| n.to_string_lossy().to_string()).ok_or_else(|| ToolError::Failed("no conversation".into()))?;
         let brand = self.0.brand.read().await.clone();
         let full = format!("{} {}", brand.image_prompt_preamble(), prompt);
-        let generated = crate::images::generate(&self.0, &full, args["shape"].as_str().unwrap_or("square")).await.map_err(|e| {
-            ToolError::Failed(format!("No image this time: {e}. Tell the owner plainly, don't retry in a loop; logo_concepts and social_post need no image model."))
-        })?;
-        let bytes = generated.bytes;
-        let kind = match args["kind"].as_str() {
-            Some("texture") => AssetKind::Texture,
-            Some("icon_set") => AssetKind::IconSet,
-            Some("logo") => AssetKind::Logo,
-            _ => AssetKind::Image,
-        };
-        let name = format!("generated-{}.png", &jugg_crypto::sha256_hex(&bytes)[..10]);
-        std::fs::write(job_path(ctx, &name)?, &bytes).map_err(|e| ToolError::Failed(e.to_string()))?;
-        let title: String = prompt.chars().take(60).collect();
-        jugg_tools::write_meta(&job_path(ctx, &name)?, kind, &title, None)?;
-        Ok(ToolOutput { summary: format!("Generated {name} ({}). It will be checked against the brand and shown for review.", generated.note), files: vec![name.into()], data: Value::Null })
+        let id = crate::images::create_handoff(&self.0, &conversation, &full, kind, shape, &title).await.map_err(ToolError::Failed)?;
+        Ok(ToolOutput {
+            summary: format!("Ready for the owner to make in ChatGPT: “{title}”. They'll drop the image back here; it then lands in Assets."),
+            files: vec![],
+            data: json!({ "handoff": id }),
+        })
     }
 }

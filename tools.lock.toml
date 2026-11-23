@@ -86,22 +86,3 @@ bin = ""
 license = "OFL-1.1 / Apache-2.0 / UFL (per family)"
 network = true
 note = "Font mirror sync lands with the website builder."
-
-# Default image maker: GPT Image through the owner's own ChatGPT session (Playwright +
-# Chromium). Source ships in the release (tools/chatgpt-image, npm lockfile with
-# integrity hashes); Node.js is pinned from nodejs.org by SHA-256.
-[tool.chatgpt-image]
-repo = "lancesmithcc/juggernaughtos"
-version = "1.0.0"
-install = "bundled-node"
-bin = "chatgpt-image"
-license = "MIT"
-network = true
-timeout_secs = 600
-memory_mb = 2048
-canary = ["selftest"]
-note = "Needs a one-time sign-in from Settings → Image generation → Connect ChatGPT."
-[tool.chatgpt-image.dist]
-node_version = "v22.23.4"
-node_sha256_aarch64 = "f7a1e486dbc8b286847815b477d4fb5e9fb963ed4489c3e1588853d685f589f9"
-node_sha256_x86_64 = "b8492284c76a54baf58d61668dd0e41ee0fc98adabf9503d30f05d08f55b4406"

@@ -449,36 +449,28 @@ fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: 10px; }
 .signout { margin-top: 40px; }
 .sub-h { margin: 8px 0 0; font-size: 15px; font-weight: 700; }
 .row-actions { display: flex; flex-wrap: wrap; gap: 10px; }
-/* ------------------------------------------------------------ Connect ChatGPT pop-up */
-.connect-card { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; justify-content: space-between; margin-top: 12px; padding: 16px 18px; border-radius: 16px; border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--line)); background: var(--primary-soft); animation: rise var(--base) var(--ease); }
-.connect-card > div { flex: 1; min-width: 220px; }
-.connect-card p { margin: 4px 0 0; color: var(--ink-soft); font-size: 14px; }
+/* ------------------------------------------------------------ image hand-off to ChatGPT */
+.chat-handoffs { display: grid; gap: 12px; margin-top: 12px; }
+.handoff { display: grid; gap: 12px; padding: 16px 18px; border-radius: 16px; border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--line)); background: var(--primary-soft); animation: rise var(--base) var(--ease); }
+.handoff.done { padding: 10px 16px; border-color: var(--line); background: var(--surface-sunk); }
+.handoff-done { margin: 0; font-size: 14px; color: var(--ok); font-weight: 600; }
+.handoff-head { display: flex; gap: 12px; align-items: flex-start; }
+.handoff-head p { margin: 4px 0 0; color: var(--ink-soft); font-size: 14px; }
+.handoff-badge { flex: none; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 11px; font-size: 11px; font-weight: 800; letter-spacing: .04em; color: var(--surface); background: var(--ink); }
+.handoff-prompt summary { cursor: pointer; font-size: 13.5px; color: var(--ink-soft); }
+.handoff-prompt p { margin: 8px 0 0; padding: 10px 12px; border-radius: 10px; background: var(--surface); font-size: 13.5px; line-height: 1.5; color: var(--ink-soft); white-space: pre-wrap; }
+.dropzone { display: flex; align-items: center; justify-content: center; min-height: 76px; padding: 14px; border-radius: 14px; border: 1.5px dashed color-mix(in srgb, var(--primary) 45%, var(--line)); background: var(--surface); color: var(--ink-soft); font-size: 14px; text-align: center; cursor: pointer; outline: none; transition: background var(--base) var(--ease), border-color var(--base) var(--ease); }
+.dropzone span { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: center; }
+.dropzone strong { color: var(--ink); }
+.dropzone:hover, .dropzone.over, .dropzone:focus-visible { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 8%, var(--surface)); }
+/* ------------------------------------------------------------ pop-ups */
 .modal-backdrop { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 16px; background: color-mix(in srgb, var(--ink) 42%, transparent); backdrop-filter: blur(6px); animation: fade-in var(--base) var(--ease); }
-.modal { width: min(980px, 100%); max-height: calc(100dvh - 32px); overflow: auto; display: grid; gap: 12px; padding: 20px; border-radius: 22px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-2); animation: rise var(--base) var(--ease); }
-.modal-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
-.modal-head > div { flex: 1; min-width: 0; }
-.modal-head h2 { margin: 0 0 8px; font-size: 20px; line-height: 1.2; }
-.cg-steps { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; counter-reset: step; }
-.cg-steps li { counter-increment: step; white-space: nowrap; line-height: 1.3; display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 6px; border-radius: 999px; font-size: 12.5px; color: var(--ink-faint); background: var(--surface-sunk); transition: background var(--base) var(--ease), color var(--base) var(--ease); }
-.cg-steps li::before { content: counter(step); display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; font-size: 11px; font-weight: 700; background: var(--surface); }
-.cg-steps li.on { color: var(--ink); background: var(--primary-soft); }
-.cg-steps li.on::before { background: var(--primary); color: var(--surface); }
-.modal-say { margin: 0; font-size: 15.5px; font-weight: 600; }
-.modal-say[data-step="human_check"] { color: var(--warn); }
-.modal-say[data-step="done"] { color: var(--ok); }
-.remote-browser { border-radius: 14px; outline: none; }
-.remote-browser:focus-visible { box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 24%, transparent); }
-.remote-browser img { display: block; width: 100%; height: auto; border-radius: 14px; border: 1px solid var(--line); cursor: pointer; background: var(--surface-sunk); }
-.remote-wait { aspect-ratio: 1280 / 900; display: flex; gap: 10px; align-items: center; justify-content: center; border-radius: 14px; border: 1px dashed var(--line); color: var(--ink-faint); }
-.remote-browser.hidden { display: none; }
-.here-panel { display: flex; gap: 16px; align-items: flex-start; padding: 22px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface-sunk); }
-.here-panel strong { display: block; margin-bottom: 4px; }
-.here-panel p { margin: 0; color: var(--ink-soft, var(--ink-faint)); line-height: 1.5; }
-.here-icon { flex: none; width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; font-size: 20px; background: color-mix(in srgb, var(--primary) 16%, transparent); color: var(--primary); }
-.spinner { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--primary); animation: spin 0.9s linear infinite; }
+.modal { width: min(520px, 100%); max-height: calc(100dvh - 32px); overflow: auto; display: grid; gap: 14px; padding: 24px; border-radius: 22px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-2); animation: rise var(--base) var(--ease); }
+.modal h2 { margin: 0; font-size: 21px; line-height: 1.2; }
+.modal p { margin: 0; color: var(--ink-soft); line-height: 1.5; }
+.modal .method-row { display: grid; gap: 8px; }
+.spinner { flex: none; display: inline-block; width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--primary); animation: spin 0.9s linear infinite; }
 .hint.err { color: var(--err); }
-.cmd { margin: 0; padding: 12px 14px; border-radius: 12px; background: var(--surface-sunk); overflow-x: auto; }
-.cmd code { user-select: all; font-size: 14px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .modal-backdrop, .modal, .spinner { animation: none; } }
