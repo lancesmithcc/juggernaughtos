@@ -1,6 +1,6 @@
 //! Sidebar panels. Everything here is also doable from chat; panels are for looking.
 
-use crate::api::{codex_images_ready, image_settings, save_image_settings, get_site, publish_site, rollback_site, get_brand, get_providers, get_security, get_sign_in_methods, get_standards, get_tools, save_provider_settings};
+use crate::api::{codex_images_ready, publish_site_anyway, image_settings, save_image_settings, get_site, publish_site, rollback_site, get_brand, get_providers, get_security, get_sign_in_methods, get_standards, get_tools, save_provider_settings};
 use crate::pages::account::{AddPasskey, RegenerateRecovery, TotpEnroll};
 use leptos::prelude::*;
 
@@ -30,10 +30,34 @@ pub fn BrandPanel() -> impl IntoView {
     let brand = Resource::new(|| (), |_| get_brand());
     view! {
         <Panel no="4" title="Brand" lede="Your standards. Every asset and page is checked against these before it's final.">
-            <crate::pages::setup::LogoPicker/>
             <Suspense fallback=|| view! { <div class="skeleton"></div> }>
                 {move || Suspend::new(async move {
                     brand.await.map(|b| view! {
+                        {match b.logo.clone() {
+                            Some(logo) => view! {
+                                <h2 class="section-h">"Your logo"</h2>
+                                <div class="brand-logo">
+                                    <a class="brand-logo-art" href=logo.url.clone() target="_blank" rel="noopener">
+                                        <img src=logo.preview_url.clone().unwrap_or_else(|| logo.url.clone()) alt=format!("{} logo", b.name)/>
+                                    </a>
+                                    <div class="brand-logo-files">
+                                        <p class="hint">"Used on your website header, favicon and everything I make. Download the file you need:"</p>
+                                        <ul class="logo-files">
+                                            {b.logo_files.iter().map(|f| {
+                                                let label = f.title.rsplit(" · ").next().unwrap_or(&f.title).to_string();
+                                                view! { <li><a class="btn ghost small" href=f.url.clone() download="">{label}</a></li> }
+                                            }).collect_view()}
+                                        </ul>
+                                    </div>
+                                </div>
+                                <details class="raw logo-redo">
+                                    <summary>"Start over with new logo ideas"</summary>
+                                    <crate::pages::setup::LogoPicker/>
+                                </details>
+                            }.into_any(),
+                            None => view! { <crate::pages::setup::LogoPicker/> }.into_any(),
+                        }}
+                        <h2 class="section-h">"Colours"</h2>
                         <div class="swatch-grid">
                             {b.colors.into_iter().map(|(slug, hex, usage)| { let style = format!("--c:{hex}"); view! {
                                 <figure class="token" style=style>
@@ -42,6 +66,7 @@ pub fn BrandPanel() -> impl IntoView {
                                 </figure>
                             }}).collect_view()}
                         </div>
+                        <h2 class="section-h">"Type"</h2>
                         <div class="type-specimen">
                             <p class="specimen-h">{b.heading_font.clone()}</p>
                             <p class="specimen-b">{b.body_font.clone()}</p>
@@ -61,12 +86,26 @@ pub fn WebsitePanel() -> impl IntoView {
     let std = Resource::new(|| (), |_| get_standards());
     let msg = RwSignal::new(None::<String>);
     let working = RwSignal::new(false);
-    let act = move |publish: bool| {
+    // The last publish was stopped by standards the owner is allowed to waive.
+    let can_force = RwSignal::new(false);
+    let act = move |what: &'static str| {
         working.set(true);
         msg.set(None);
+        can_force.set(false);
         leptos::task::spawn_local(async move {
-            let r = if publish { publish_site().await } else { rollback_site().await };
-            msg.set(Some(match r { Ok(m) => m, Err(e) => e.to_string().replace("error running server function: ", "") }));
+            let r = match what {
+                "publish" => publish_site().await,
+                "anyway" => publish_site_anyway().await,
+                _ => rollback_site().await,
+            };
+            match r {
+                Ok(m) => msg.set(Some(m)),
+                Err(e) => {
+                    let m = e.to_string().replace("error running server function: ", "");
+                    can_force.set(m.contains("Publish anyway"));
+                    msg.set(Some(m));
+                }
+            }
             working.set(false);
             site.refetch();
         });
@@ -87,13 +126,22 @@ pub fn WebsitePanel() -> impl IntoView {
                                     {has_drafts.then(|| view! { <p class="hint">"You have unpublished changes."</p> })}
                                 </div>
                                 <div class="site-actions">
-                                    {can_rollback.then(|| view! { <button class="btn ghost small" disabled=move || working.get() on:click=move |_| act(false)>"Roll back"</button> })}
-                                    <button class="btn primary small" disabled=move || working.get() || no_pages on:click=move |_| act(true)>
+                                    {can_rollback.then(|| view! { <button class="btn ghost small" disabled=move || working.get() on:click=move |_| act("rollback")>"Roll back"</button> })}
+                                    <button class="btn primary small" disabled=move || working.get() || no_pages on:click=move |_| act("publish")>
                                         {move || if working.get() { "Publishing…" } else { "Publish" }}
                                     </button>
                                 </div>
                             </div>
-                            {move || msg.get().map(|m| view! { <p class="site-msg" role="status">{m}</p> })}
+                            {move || msg.get().map(|m| view! {
+                                <div class="site-msg" role="status">
+                                    <p>{m}</p>
+                                    {move || can_force.get().then(|| view! {
+                                        <div class="row-actions">
+                                            <button class="btn ghost small" disabled=move || working.get() on:click=move |_| act("anyway")>"Publish anyway"</button>
+                                        </div>
+                                    })}
+                                </div>
+                            })}
                             <h2 class="section-h">"Pages"</h2>
                             <ul class="rules">{s.pages.into_iter().map(|(slug, title, status)| {
                                 let preview = format!("/_preview{}", if slug == "/" { "/".to_string() } else { slug.clone() });
@@ -123,17 +171,18 @@ pub fn WebsitePanel() -> impl IntoView {
                     })
                 })}
             </Suspense>
-            <h2 class="section-h">"Web standards"</h2>
+            <h2 class="section-h">"Standards every page is checked against"</h2>
+            <p class="hint">"These are the rules, not problems. Publishing checks each page against them and tells you in plain words if one isn't met."</p>
             <Suspense fallback=|| view! { <div class="skeleton"></div> }>
                 {move || Suspend::new(async move {
                     std.await.map(|s| view! {
-                        <ul class="rules">
+                        <ul class="rules standards">
                             {s.rules.into_iter().map(|(id, level, overridable, why)| view! {
                                 <li class="rule">
-                                    <code>{id}</code>
-                                    <span class=format!("badge {level}")>{level.clone()}</span>
-                                    {(!overridable).then(|| view! { <span class="badge locked" title="Security rule: change in Settings → Advanced only">"locked"</span> })}
-                                    <p>{why}</p>
+                                    <p class="rule-why">{why}</p>
+                                    <span class="note" data-tone=if level == "error" { "needs" } else { "" }>{if level == "error" { "Must meet" } else { "Recommended" }}</span>
+                                    {(!overridable).then(|| view! { <span class="note" title="A security rule: it can't be skipped from chat or Publish anyway">"Can't be skipped"</span> })}
+                                    <code class="rule-id">{id}</code>
                                 </li>
                             }).collect_view()}
                         </ul>

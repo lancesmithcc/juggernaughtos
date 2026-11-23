@@ -504,7 +504,7 @@ input::placeholder, textarea::placeholder { color: var(--ink-faint); }
 .token figcaption { display: grid; gap: 2px; padding: 10px 12px 12px; font-size: 13px; }
 .token figcaption strong { font-weight: 700; }
 .token figcaption span { color: var(--ink-soft); }
-.type-specimen { margin-top: 32px; padding: 24px 0; border-top: 2px solid var(--ink); border-bottom: 1px solid var(--line); }
+.type-specimen { padding: 8px 0 24px; border-bottom: 1px solid var(--line); }
 .specimen-h { margin: 6px 0 14px; font-size: 40px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.05; }
 .specimen-b { margin: 4px 0 0; font-size: 18px; }
 .raw { margin-top: 24px; }
@@ -710,3 +710,26 @@ input::placeholder, textarea::placeholder { color: var(--ink-faint); }
   .kv dt { border-bottom: 0; padding-bottom: 0; }
   .setup-head .mark-logo { width: 52px; height: 52px; }
 }
+
+/* Brand: the logo in use, on the light ground work is judged on, with its files. */
+.brand-logo { display: grid; grid-template-columns: minmax(220px, 360px) 1fr; gap: 24px; align-items: start; }
+.brand-logo-art { display: grid; place-items: center; aspect-ratio: 4 / 3; background: #f1f1ef; border: 1px solid var(--line); }
+.brand-logo-art img { max-width: 82%; max-height: 82%; object-fit: contain; }
+.brand-logo-files { display: grid; gap: 12px; }
+.logo-files { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.logo-redo { margin-top: 18px; }
+.logo-redo[open] summary { margin-bottom: 14px; }
+/* Discard sits apart from Approve so it isn't hit by accident. */
+.asset-actions .discard { margin-left: auto; border-color: transparent; color: var(--ink-soft); }
+.asset-actions .discard:hover:not(:disabled) { border-color: var(--line-strong); color: var(--err); }
+.asset.discarded .asset-body { padding-top: 16px; }
+.site-msg p { margin: 0 0 10px; white-space: pre-wrap; }
+.site-msg p:last-child { margin-bottom: 0; }
+@media (max-width: 640px) { .brand-logo { grid-template-columns: 1fr; } }
+
+/* Standards catalogue: the plain reason leads; the rule id is a quiet reference. */
+.rules.standards .rule { grid-template-columns: 1fr auto auto; }
+.rules.standards .rule-why { grid-column: 1; margin: 0; color: var(--ink); font-size: 14.5px; }
+.rules.standards .note { margin: 0; }
+.rules.standards .rule-id { grid-column: 1 / -1; font-size: 12px; color: var(--ink-faint); }
+@media (max-width: 640px) { .rules.standards .rule { grid-template-columns: 1fr; } }

@@ -158,6 +158,11 @@ pub struct ProvidersView {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct BrandView {
     pub name: String,
+    /// The brand's logo, if one is adopted, and the files made from it.
+    #[serde(default)]
+    pub logo: Option<AssetCard>,
+    #[serde(default)]
+    pub logo_files: Vec<AssetCard>,
     pub colors: Vec<(String, String, String)>,
     pub heading_font: String,
     pub body_font: String,
@@ -489,7 +494,17 @@ pub async fn get_brand() -> Result<BrandView, ServerFnError> {
     let st = ctx::state()?;
     ctx::user(&st).await?;
     let b = st.brand.read().await.clone();
+    let logo = match &b.logo.primary_asset {
+        Some(id) => crate::assets::card(&st, id).await,
+        None => None,
+    };
+    let logo_files = match &logo {
+        Some(l) => crate::assets::logo_files(&st, &b.name, l).await,
+        None => vec![],
+    };
     Ok(BrandView {
+        logo,
+        logo_files,
         name: b.name.clone(),
         colors: b.colors.iter().map(|c| (c.slug.clone(), c.hex.clone(), c.usage.clone())).collect(),
         heading_font: b.typography.heading.family.clone(),
@@ -585,6 +600,22 @@ pub async fn publish_site() -> Result<String, ServerFnError> {
     let st = ctx::state()?;
     let user = ctx::user(&st).await?;
     st.site.publish(&user).await.map_err(ServerFnError::new)
+}
+
+/// The owner chose to publish despite standards that allow an override.
+#[server]
+pub async fn publish_site_anyway() -> Result<String, ServerFnError> {
+    let st = ctx::state()?;
+    let user = ctx::owner(&st).await?;
+    st.site.publish_with(&user, true).await.map_err(ServerFnError::new)
+}
+
+/// Hide an asset from the library (or bring it back).
+#[server]
+pub async fn discard_asset(id: String, undo: bool) -> Result<(), ServerFnError> {
+    let st = ctx::state()?;
+    let user = ctx::user(&st).await?;
+    crate::assets::discard(&st, &user, &id, undo).await.map_err(ServerFnError::new)
 }
 
 #[server]

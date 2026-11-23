@@ -1,6 +1,6 @@
 //! Asset tiles (in chat and in the library) and the Assets panel.
 
-use crate::api::{decide_approval, decide_asset, finish_logo, list_assets, list_jobs, ApprovalView, AssetCard};
+use crate::api::{decide_approval, decide_asset, discard_asset, finish_logo, list_assets, list_jobs, ApprovalView, AssetCard};
 use leptos::prelude::*;
 
 fn label(kind: &str) -> String {
@@ -74,6 +74,20 @@ pub fn AssetTile(card: AssetCard) -> impl IntoView {
     // Approving a logo image makes the whole file set (vector, print, screen).
     let pack = RwSignal::new(None::<Result<Vec<AssetCard>, String>>);
     let making = RwSignal::new(false);
+    let discarded = RwSignal::new(false);
+    let note = RwSignal::new(None::<String>);
+    let discard = move |undo: bool| {
+        working.set(true);
+        note.set(None);
+        let id = card.get_untracked().id;
+        leptos::task::spawn_local(async move {
+            match discard_asset(id, undo).await {
+                Ok(()) => discarded.set(!undo),
+                Err(e) => note.set(Some(e.to_string().replace("error running server function: ", ""))),
+            }
+            working.set(false);
+        });
+    };
     let decide = move |approve: bool| {
         working.set(true);
         let id = card.get_untracked().id;
@@ -99,6 +113,19 @@ pub fn AssetTile(card: AssetCard) -> impl IntoView {
             let status = c.status.clone();
             let rejected = status == "rejected";
             let undecided = status == "review" || rejected;
+            if discarded.get() {
+                return view! {
+                    <article class="asset discarded" data-status="discarded">
+                        <div class="asset-body">
+                            <h3>{c.title.clone()}</h3>
+                            <p class="note">"Discarded. It's hidden from Assets."</p>
+                            <div class="asset-actions">
+                                <button class="btn ghost small" disabled=move || working.get() on:click=move |_| discard(true)>"Undo"</button>
+                            </div>
+                        </div>
+                    </article>
+                }.into_any();
+            }
             view! {
                 <article class="asset" data-status=status.clone()>
                     <a class="asset-media" href=c.url.clone() target="_blank" rel="noopener">
@@ -127,7 +154,10 @@ pub fn AssetTile(card: AssetCard) -> impl IntoView {
                             } else {
                                 view! { <button class="btn primary small" disabled=move || working.get() on:click=move |_| decide(true)>"Approve"</button> }.into_any()
                             })}
+                            <button class="btn ghost small discard" disabled=move || working.get() on:click=move |_| discard(false)
+                                title="Hide it from Assets. You can undo this.">"Discard"</button>
                         </div>
+                        {move || note.get().map(|n| view! { <p class="hint err" role="alert">{n}</p> })}
                     </div>
                     {move || making.get().then(|| view! {
                         <p class="logo-pack-status" role="status"><span class="spinner"></span>"Vectorizing and making your logo files…"</p>
@@ -147,7 +177,7 @@ pub fn AssetTile(card: AssetCard) -> impl IntoView {
                         Err(e) => view! { <p class="hint err" role="alert">{format!("Couldn't make the logo files: {e}")}</p> }.into_any(),
                     })}
                 </article>
-            }
+            }.into_any()
         }}
     }
 }

@@ -167,9 +167,51 @@ pub fn to_card((id, kind, title, status, mime, report, preview, created_at): (St
 
 pub async fn list(st: &AppState, kind: Option<String>) -> Vec<AssetCard> {
     let rows: Vec<(String, String, String, String, String, Option<String>, Option<String>, i64)> = match kind.filter(|k| !k.is_empty()) {
-        Some(k) => sqlx::query_as("SELECT id, kind, title, status, mime, gate_report_json, preview_path, created_at FROM assets WHERE kind = ? ORDER BY created_at DESC LIMIT 200").bind(k).fetch_all(&st.pool).await,
-        None => sqlx::query_as("SELECT id, kind, title, status, mime, gate_report_json, preview_path, created_at FROM assets ORDER BY created_at DESC LIMIT 200").fetch_all(&st.pool).await,
+        Some(k) => sqlx::query_as("SELECT id, kind, title, status, mime, gate_report_json, preview_path, created_at FROM assets WHERE kind = ? AND discarded_at IS NULL ORDER BY created_at DESC LIMIT 200").bind(k).fetch_all(&st.pool).await,
+        None => sqlx::query_as("SELECT id, kind, title, status, mime, gate_report_json, preview_path, created_at FROM assets WHERE discarded_at IS NULL ORDER BY created_at DESC LIMIT 200").fetch_all(&st.pool).await,
     }
+    .unwrap_or_default();
+    rows.into_iter().map(to_card).collect()
+}
+
+/// Hide an asset from the library, or bring it back. The brand's current logo
+/// can't be discarded while it's in use.
+pub async fn discard(st: &AppState, user: &str, id: &str, undo: bool) -> Result<(), String> {
+    if !undo {
+        let b = st.brand.read().await;
+        let in_use = [&b.logo.primary_asset, &b.logo.mark_asset, &b.logo.mono_asset, &b.logo.reversed_asset].iter().any(|a| a.as_deref() == Some(id));
+        if in_use {
+            return Err("That's your current logo. Choose a different logo first, then discard this one.".into());
+        }
+    }
+    let n = sqlx::query("UPDATE assets SET discarded_at = ? WHERE id = ?")
+        .bind((!undo).then(jugg_core::now_unix))
+        .bind(id)
+        .execute(&st.pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .rows_affected();
+    if n == 0 {
+        return Err("Asset not found.".into());
+    }
+    let _ = jugg_db::audit::append(&st.pool, Some(&st.signer), user, if undo { "asset.restored" } else { "asset.discarded" }, &json!({ "id": id })).await;
+    Ok(())
+}
+
+/// The files made with a logo (the SVG, PDF, EPS, PNG and WebP set, or a concept's
+/// variants): final logo assets made within a minute of it.
+pub async fn logo_files(st: &AppState, brand: &str, logo: &AssetCard) -> Vec<AssetCard> {
+    let prefix = format!("{brand} logo · %");
+    let rows: Vec<(String, String, String, String, String, Option<String>, Option<String>, i64)> = sqlx::query_as(
+        "SELECT id, kind, title, status, mime, gate_report_json, preview_path, created_at FROM assets
+         WHERE kind IN ('logo','logo_vector') AND status = 'final' AND discarded_at IS NULL AND title LIKE ? AND created_at BETWEEN ? AND ?
+         ORDER BY rowid",
+    )
+    .bind(prefix)
+    .bind(logo.created_at - 60)
+    .bind(logo.created_at + 60)
+    .fetch_all(&st.pool)
+    .await
     .unwrap_or_default();
     rows.into_iter().map(to_card).collect()
 }

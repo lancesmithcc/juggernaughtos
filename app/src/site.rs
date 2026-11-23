@@ -196,14 +196,52 @@ impl SiteEnv {
 
     /// Build, validate and switch the live site. Only runs after owner approval.
     pub async fn publish(&self, by: &str) -> Result<String, String> {
-        let (built, extra) = self.build().await?;
+        self.publish_with(by, false).await
+    }
+
+    /// `anyway`: the owner chose to publish despite standards that allow it; each
+    /// broken rule is recorded as their override. Security rules still block.
+    pub async fn publish_with(&self, by: &str, anyway: bool) -> Result<String, String> {
+        let (mut built, mut extra) = self.build().await?;
+        if !built.publishable() && anyway {
+            let mut recorded = 0;
+            for (slug, r) in &built.reports {
+                for v in r.violations.iter().filter(|v| v.level == jugg_web::Level::Error && !v.overridden && rule_info(&v.rule).0) {
+                    sqlx::query("INSERT INTO standards_overrides (id, rule, target, reason, user_id, created_at) VALUES (?,?,?,?,?,?)")
+                        .bind(jugg_core::new_id())
+                        .bind(&v.rule)
+                        .bind(slug)
+                        .bind("Owner chose to publish anyway")
+                        .bind(by)
+                        .bind(jugg_core::now_unix())
+                        .execute(&self.pool)
+                        .await
+                        .map_err(|e| e.to_string())?;
+                    recorded += 1;
+                }
+            }
+            if recorded > 0 {
+                let _ = jugg_db::audit::append(&self.pool, Some(&self.signer), by, "site.published_anyway", &json!({ "overrides": recorded })).await;
+                (built, extra) = self.build().await?;
+            }
+        }
         if !built.publishable() {
-            let blocking: Vec<String> = built
-                .reports
-                .iter()
-                .flat_map(|(slug, r)| r.violations.iter().filter(|v| v.level == jugg_web::Level::Error && !v.overridden).map(move |v| format!("{slug}: {} ({})", v.message, v.rule)))
-                .collect();
-            return Err(format!("Not published. Fix these first (or ask the owner to override them):\n- {}", blocking.join("\n- ")));
+            let mut lines = Vec::new();
+            let mut all_overridable = true;
+            for (slug, r) in &built.reports {
+                for v in r.violations.iter().filter(|v| v.level == jugg_web::Level::Error && !v.overridden) {
+                    let (overridable, why) = rule_info(&v.rule);
+                    all_overridable &= overridable;
+                    let page = if slug == "/" { "Homepage".to_string() } else { slug.clone() };
+                    lines.push(format!("• {page}: {}. {why}", v.message));
+                }
+            }
+            let next = if all_overridable {
+                "Ask me in chat to fix it, or press Publish anyway to go live as it is (I'll note that you chose to)."
+            } else {
+                "Ask me in chat to fix it; security standards can't be skipped."
+            };
+            return Err(format!("Not published yet. {} to sort out:\n{}\n\n{next}", if lines.len() == 1 { "One thing".to_string() } else { format!("{} things", lines.len()) }, lines.join("\n")));
         }
         let id = jugg_core::new_id();
         let releases = self.site_root().join("releases");
@@ -281,18 +319,64 @@ fn optimise(stored: &str, bytes: &[u8]) -> Option<(String, Vec<u8>, u32, u32)> {
         let (w, h) = (num("width").unwrap_or(800), num("height").unwrap_or(600));
         return Some((format!("{stem}.svg"), bytes.to_vec(), w.max(1), h.max(1)));
     }
-    let img = image::load_from_memory(bytes).ok()?;
-    let img = if img.width() > 1600 { img.resize(1600, u32::MAX, image::imageops::FilterType::Lanczos3) } else { img };
-    let (w, h) = (img.width(), img.height());
-    let mut out = std::io::Cursor::new(Vec::new());
-    let has_alpha = img.color().has_alpha() && img.to_rgba8().pixels().any(|p| p[3] < 255);
-    if has_alpha {
-        img.write_to(&mut out, image::ImageFormat::Png).ok()?;
-        Some((format!("{stem}-{w}.png"), out.into_inner(), w, h))
-    } else {
-        let rgb = img.to_rgb8();
-        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 82).encode_image(&rgb).ok()?;
-        Some((format!("{stem}-{w}.jpg"), out.into_inner(), w, h))
+    let original = image::load_from_memory(bytes).ok()?;
+    let has_alpha = original.color().has_alpha() && original.to_rgba8().pixels().any(|p| p[3] < 255);
+    // Step down quality, then size, until the image fits the page budget, so a
+    // publish never stops on a heavy photo. The smallest try is kept regardless.
+    let mut best: Option<(String, Vec<u8>, u32, u32)> = None;
+    'sizes: for max_w in [1600u32, 1400, 1200, 1000, 800] {
+        let img = if original.width() > max_w { original.resize(max_w, u32::MAX, image::imageops::FilterType::Lanczos3) } else { original.clone() };
+        let (w, h) = (img.width(), img.height());
+        let tries: &[u8] = if has_alpha { &[0] } else { &[82, 74, 66] };
+        for &q in tries {
+            let mut out = std::io::Cursor::new(Vec::new());
+            let name = if has_alpha {
+                img.write_to(&mut out, image::ImageFormat::Png).ok()?;
+                format!("{stem}-{w}.png")
+            } else {
+                image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, q).encode_image(&img.to_rgb8()).ok()?;
+                format!("{stem}-{w}.jpg")
+            };
+            let out = out.into_inner();
+            let fits = (out.len() as u64) <= IMAGE_TARGET;
+            best = Some((name, out, w, h));
+            if fits {
+                break 'sizes;
+            }
+        }
+        if original.width() <= max_w && max_w < 1000 {
+            break;
+        }
+    }
+    best
+}
+
+/// Whether the owner may override a web standard, and why it exists.
+fn rule_info(id: &str) -> (bool, &'static str) {
+    jugg_web::RULES.iter().find(|r| r.id == id).map(|r| (r.chat_overridable, r.why)).unwrap_or((false, ""))
+}
+
+/// Comfortably under the web standards' 300 KB per-image limit.
+const IMAGE_TARGET: u64 = 280 * 1024;
+
+#[cfg(test)]
+mod optimise_tests {
+    #[test]
+    fn heavy_photos_fit_the_budget() {
+        // Noise is the worst case for JPEG: it must still come in under budget.
+        let mut seed = 1u32;
+        let img = image::RgbImage::from_fn(2400, 1600, |_, _| {
+            seed ^= seed << 13;
+            seed ^= seed >> 17;
+            seed ^= seed << 5;
+            image::Rgb([seed as u8, (seed >> 8) as u8, (seed >> 16) as u8])
+        });
+        let mut raw = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgb8(img).write_to(&mut raw, image::ImageFormat::Png).unwrap();
+        let (name, out, w, _) = super::optimise("abcdef0123456789.png", &raw.into_inner()).unwrap();
+        assert!(name.ends_with(".jpg"), "{name}");
+        assert!(w <= 1600);
+        assert!(out.len() as u64 <= super::IMAGE_TARGET, "{} KB", out.len() / 1024);
     }
 }
 
