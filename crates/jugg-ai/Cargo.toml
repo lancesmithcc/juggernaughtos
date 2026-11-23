@@ -18,5 +18,5 @@ tracing.workspace = true
 reqwest.workspace = true
 secrecy.workspace = true
 
-[dev-dependencies]
+base64.workspace = true
 tempfile = "3"

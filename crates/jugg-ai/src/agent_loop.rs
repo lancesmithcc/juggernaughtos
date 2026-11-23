@@ -2,6 +2,7 @@
 
 use crate::{AgentEvent, AgentRequest, AiError, Role};
 use async_trait::async_trait;
+use base64::{engine::general_purpose::STANDARD, Engine};
 use jugg_tools::ToolError;
 use serde_json::{json, Value};
 use tokio::sync::mpsc;
@@ -29,6 +30,11 @@ pub trait ChatBackend: Send + Sync {
     fn model(&self) -> &str;
 }
 
+pub(crate) fn image_label(image: &crate::InputImage) -> String {
+    let when = if image.previous_turn { "earlier message" } else { "current message" };
+    format!("Image from {when}, filename: {:?}", image.name)
+}
+
 pub async fn run_chat_loop(backend: &dyn ChatBackend, req: AgentRequest, tx: mpsc::Sender<AgentEvent>) -> Result<(), AiError> {
     let tools: Vec<Value> = req
         .registry
@@ -45,7 +51,17 @@ pub async fn run_chat_loop(backend: &dyn ChatBackend, req: AgentRequest, tx: mps
         };
         messages.push(json!({"role": role, "content": m.content}));
     }
-    messages.push(json!({"role":"user","content": req.user}));
+    let content = if req.images.is_empty() {
+        json!(req.user)
+    } else {
+        let mut parts = vec![json!({"type":"text","text":req.user})];
+        for image in &req.images {
+            parts.push(json!({"type":"text","text":image_label(image)}));
+            parts.push(json!({"type":"image_url","image_url":{"url":format!("data:image/png;base64,{}", STANDARD.encode(&image.png))}}));
+        }
+        json!(parts)
+    };
+    messages.push(json!({"role":"user","content": content}));
 
     for _ in 0..MAX_STEPS {
         let turn = backend.complete(&messages, &tools).await?;
@@ -96,6 +112,9 @@ mod tests {
         async fn complete(&self, messages: &[Value], _tools: &[Value]) -> Result<ChatTurn, AiError> {
             let n = self.0.fetch_add(1, Ordering::SeqCst);
             if n == 0 {
+                let parts = messages.last().unwrap()["content"].as_array().unwrap();
+                assert_eq!(parts[0]["text"], "check css");
+                assert_eq!(parts[2]["image_url"]["url"], "data:image/png;base64,AQID");
                 Ok(ChatTurn {
                     text: String::new(),
                     tool_calls: vec![ToolCall { id: "c1".into(), name: "lint_css".into(), args: json!({"css":"a{color:#000}"}) }],
@@ -123,6 +142,7 @@ mod tests {
             user: "check css".into(),
             mcp_command: ("juggernaught".into(), vec!["mcp".into()]),
             mcp_env: vec![],
+            images: vec![crate::InputImage { name: "reference.png".into(), png: vec![1, 2, 3], previous_turn: false }],
             sandbox: None,
             registry: jugg_tools::Registry::standard(&Default::default(), &dir),
             ctx: jugg_tools::ToolContext { job_dir: dir.clone(), brand: Arc::new(Default::default()), approved: false },

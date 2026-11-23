@@ -65,10 +65,17 @@ pub enum AgentEvent {
     Error { message: String },
 }
 
+pub struct InputImage {
+    pub name: String,
+    pub png: Vec<u8>,
+    pub previous_turn: bool,
+}
+
 pub struct AgentRequest {
     pub system: String,
     pub history: Vec<ChatMessage>,
     pub user: String,
+    pub images: Vec<InputImage>,
     /// Command that starts our MCP server (for CLI providers).
     pub mcp_command: (String, Vec<String>),
     /// Environment for that command (the per-turn bridge token).

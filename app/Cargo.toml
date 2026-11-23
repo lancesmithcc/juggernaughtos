@@ -27,7 +27,7 @@ wasm-bindgen-futures = { workspace = true, optional = true }
 
 # server-only
 leptos_axum = { workspace = true, optional = true }
-axum = { workspace = true, optional = true }
+axum = { workspace = true, features = ["multipart"], optional = true }
 tokio = { workspace = true, optional = true }
 tower = { workspace = true, optional = true }
 tower-http = { workspace = true, optional = true }

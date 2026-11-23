@@ -148,6 +148,15 @@ Internal review of the whole system, done 2026-11-22. Each finding and what chan
 - An earlier Playwright worker that drove ChatGPT was removed: ChatGPT's Cloudflare check and
   Google sign-in block automated browsers, and we don't build bot-check evasion.
 
+### Images attached to chat messages
+
+- `POST /api/chat/turn` (multipart): session cookie plus an `X-Jugg-Chat: 1` header a cross-site
+  form can't send; at most 4 images of 10 MB, 20 megapixels; decoded one at a time, orientation baked
+  in, resized to 1024 px and re-encoded to PNG (metadata dropped).
+- Stored sealed in `chat_images` (image and file name, AAD bound to the row id) and deleted with
+  their message. `GET /files/chat-image/{id}` serves only the conversation owner, `no-store`,
+  `nosniff`. The agent sees the latest few images of the conversation, labelled with file names.
+
 What sealing does not protect: a root attacker on the running box can read the decrypted credentials
 from the service's ramfs or its memory. Sealing defends the disk, backups of the disk and offline
 copies. Overwriting a file on an SSD does not guarantee the old blocks are gone; full-disk encryption

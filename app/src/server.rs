@@ -94,6 +94,7 @@ impl<T> Pending<T> {
 pub struct Turn {
     pub user_id: String,
     pub conversation_id: String,
+    pub message_id: String,
     pub text: String,
 }
 
@@ -228,7 +229,7 @@ pub fn agent_home(cfg: &Config) -> std::path::PathBuf {
     cfg.data_dir.join("agent-home")
 }
 
-fn err(e: impl std::fmt::Display) -> String {
+pub(crate) fn err(e: impl std::fmt::Display) -> String {
     e.to_string()
 }
 
@@ -595,31 +596,37 @@ pub async fn logout(State(st): State<AppState>, headers: HeaderMap) -> Response 
 // ---------------------------------------------------------------- chat
 
 /// Store the owner's message and hand back a single-use ticket for the stream.
-pub async fn start_turn(st: &AppState, user_id: &str, conversation_id: Option<String>, text: String) -> Result<crate::api::TurnTicket, String> {
+pub async fn start_turn(
+    st: &AppState, user_id: &str, conversation_id: Option<String>, text: String,
+    uploads: Vec<crate::chat_images::Upload>,
+) -> Result<crate::api::TurnTicket, String> {
+    let text = text.trim().to_string();
+    if text.len() > 20_000 || (text.is_empty() && uploads.is_empty()) {
+        return Err("Enter a message up to 20,000 bytes or attach an image.".into());
+    }
+    let mut db = st.pool.begin_with("BEGIN IMMEDIATE").await.map_err(err)?;
     let now = jugg_core::now_unix();
     let conv = match conversation_id {
         Some(id) => {
-            let owned: Option<String> = sqlx::query_scalar("SELECT id FROM conversations WHERE id = ? AND user_id = ?").bind(&id).bind(user_id).fetch_optional(&st.pool).await.map_err(err)?;
+            let owned: Option<String> = sqlx::query_scalar("SELECT id FROM conversations WHERE id = ? AND user_id = ?")
+                .bind(&id).bind(user_id).fetch_optional(&mut *db).await.map_err(err)?;
             owned.ok_or("Conversation not found.")?
         }
         None => {
             let id = jugg_core::new_id();
-            let title: String = text.chars().take(60).collect();
+            let title: String = if text.is_empty() { "Image attachment".into() } else { text.chars().take(60).collect() };
             let title_enc = jugg_crypto::seal(&st.ring, title.as_bytes(), format!("conversations:title:{id}").as_bytes()).map_err(err)?;
             sqlx::query("INSERT INTO conversations (id, title_enc, user_id, created_at, updated_at) VALUES (?,?,?,?,?)")
-                .bind(&id)
-                .bind(title_enc)
-                .bind(user_id)
-                .bind(now)
-                .bind(now)
-                .execute(&st.pool)
-                .await
-                .map_err(err)?;
+                .bind(&id).bind(title_enc).bind(user_id).bind(now).bind(now)
+                .execute(&mut *db).await.map_err(err)?;
             id
         }
     };
-    let turn_id = st.turns.put(Turn { user_id: user_id.into(), conversation_id: conv.clone(), text });
-    Ok(crate::api::TurnTicket { conversation_id: conv, turn_id })
+    let message_id = store_message(st, &mut *db, &conv, "user", &text, None, "owner").await?;
+    let images = crate::chat_images::store(st, &mut db, &message_id, uploads).await?;
+    db.commit().await.map_err(err)?;
+    let turn_id = st.turns.put(Turn { user_id: user_id.into(), conversation_id: conv.clone(), message_id, text });
+    Ok(crate::api::TurnTicket { conversation_id: conv, turn_id, images })
 }
 
 /// GET /api/chat/stream/{turn_id} — Server-Sent Events of the agent's work.
@@ -642,14 +649,18 @@ pub async fn chat_stream(State(st): State<AppState>, Path(turn_id): Path<String>
 }
 
 async fn run_turn(st: AppState, turn: Turn, out: tokio::sync::mpsc::Sender<AgentEvent>) {
-    let Turn { conversation_id: conv, text, .. } = turn;
+    let Turn { conversation_id: conv, message_id, text, .. } = turn;
     let started = jugg_core::now_unix();
-    let history = load_history(&st, &conv).await;
-    if let Err(e) = store_message(&st, &conv, "user", &text, None, "owner").await {
-        let _ = out.send(AgentEvent::Error { message: e }).await;
-        let _ = out.send(AgentEvent::Done).await;
-        return;
-    }
+    let history = load_history(&st, &conv, &message_id).await;
+    let images = match crate::chat_images::recent(&st, &conv, &message_id).await {
+        Ok(images) => images,
+        Err(_) => {
+            let _ = out.send(AgentEvent::Error { message: "Couldn't open the chat images.".into() }).await;
+            let _ = out.send(AgentEvent::Done).await;
+            return;
+        }
+    };
+    let user = if text.is_empty() { "Please look at the attached image(s).".into() } else { text };
     let brand = st.brand.read().await.clone();
     let business: Option<String> = sqlx::query_scalar("SELECT value_json FROM settings WHERE key = 'business'").fetch_optional(&st.pool).await.ok().flatten();
     let exe = std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_else(|_| "juggernaught".into());
@@ -671,7 +682,8 @@ async fn run_turn(st: AppState, turn: Turn, out: tokio::sync::mpsc::Sender<Agent
     let req = AgentRequest {
         system: jugg_ai::prompt::system_prompt(&brand, &business.unwrap_or_default()),
         history,
-        user: text,
+        user,
+        images,
         mcp_command: (exe, vec!["mcp-proxy".into(), "--socket".into(), st.mcp_socket().display().to_string()]),
         mcp_env: vec![("JUGG_MCP_TOKEN".into(), bridge_token.clone())],
         sandbox: st.cli_sandbox(&ctx.job_dir),
@@ -732,14 +744,15 @@ async fn run_turn(st: AppState, turn: Turn, out: tokio::sync::mpsc::Sender<Agent
     if !approvals.is_empty() {
         let _ = out.send(AgentEvent::Approvals { items: serde_json::to_value(&approvals).unwrap_or_default() }).await;
     }
-    let _ = store_message(&st, &conv, "assistant", &reply, Some(serde_json::Value::Array(tools).to_string()), &label).await;
+    let _ = store_message(&st, &st.pool, &conv, "assistant", &reply, Some(serde_json::Value::Array(tools).to_string()), &label).await;
     let _ = sqlx::query("UPDATE conversations SET updated_at = ? WHERE id = ?").bind(jugg_core::now_unix()).bind(&conv).execute(&st.pool).await;
     let _ = out.send(AgentEvent::Done).await;
 }
 
-async fn load_history(st: &AppState, conv: &str) -> Vec<ChatMessage> {
-    let rows: Vec<(String, String, Vec<u8>)> = sqlx::query_as("SELECT id, role, content_enc FROM messages WHERE conversation_id = ? ORDER BY created_at, id")
+async fn load_history(st: &AppState, conv: &str, before: &str) -> Vec<ChatMessage> {
+    let rows: Vec<(String, String, Vec<u8>)> = sqlx::query_as("SELECT id, role, content_enc FROM messages WHERE conversation_id = ? AND (created_at, id) < (SELECT created_at, id FROM messages WHERE id = ?) ORDER BY created_at, id")
         .bind(conv)
+        .bind(before)
         .fetch_all(&st.pool)
         .await
         .unwrap_or_default();
@@ -752,7 +765,10 @@ async fn load_history(st: &AppState, conv: &str) -> Vec<ChatMessage> {
         .collect()
 }
 
-async fn store_message(st: &AppState, conv: &str, role: &str, content: &str, tools: Option<String>, provider: &str) -> Result<(), String> {
+async fn store_message<'a>(
+    st: &AppState, db: impl sqlx::Executor<'a, Database = sqlx::Sqlite>,
+    conv: &str, role: &str, content: &str, tools: Option<String>, provider: &str,
+) -> Result<String, String> {
     let id = jugg_core::new_id();
     let enc = jugg_crypto::seal(&st.ring, content.as_bytes(), format!("messages:content:{id}").as_bytes()).map_err(err)?;
     sqlx::query("INSERT INTO messages (id, conversation_id, role, content_enc, tool_calls_json, provider, created_at) VALUES (?,?,?,?,?,?,?)")
@@ -763,10 +779,10 @@ async fn store_message(st: &AppState, conv: &str, role: &str, content: &str, too
         .bind(tools)
         .bind(provider)
         .bind(jugg_core::now_unix())
-        .execute(&st.pool)
+        .execute(db)
         .await
         .map_err(err)?;
-    Ok(())
+    Ok(id)
 }
 
 /// Suggestion bubbles: next useful things, based on what exists already.

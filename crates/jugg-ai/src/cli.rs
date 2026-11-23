@@ -7,6 +7,7 @@
 
 use crate::{AgentEvent, AgentRequest, AiError, Provider, ProviderKind, Role};
 use async_trait::async_trait;
+use base64::{engine::general_purpose::STANDARD, Engine};
 use serde_json::{json, Value};
 use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -173,9 +174,19 @@ impl Provider for ClaudeCodeCli {
             }
         }
         let _cleanup = RemoveOnDrop(mcp_file.clone());
+        let mut input = transcript(&req);
+        if !req.images.is_empty() {
+            cmd.args(["--input-format", "stream-json"]);
+            let mut content = vec![json!({"type":"text","text":input})];
+            for image in &req.images {
+                content.push(json!({"type":"text","text":crate::agent_loop::image_label(image)}));
+                content.push(json!({"type":"image","source":{"type":"base64","media_type":"image/png","data":STANDARD.encode(&image.png)}}));
+            }
+            input = format!("{}\n", json!({"type":"user","message":{"role":"user","content":content}}));
+        }
         let child = cmd.spawn().map_err(|e| AiError::Unavailable(e.to_string()))?;
         let mut parser = ClaudeParser::default();
-        pump(child, transcript(&req), &tx, move |v| parser.parse(v)).await
+        pump(child, input, &tx, move |v| parser.parse(v)).await
     }
 }
 
@@ -261,10 +272,24 @@ impl Provider for CodexCli {
         if let Some(m) = &self.model {
             cmd.args(["--model", m]);
         }
-        cmd.arg("-");
+        let mut input = format!("{}\n\n---\n\n{}", req.system, transcript(&req));
+        // Keep only the submitted images inside the existing job sandbox.
+        let image_dir = if req.images.is_empty() {
+            None
+        } else {
+            Some(tempfile::Builder::new().prefix(".chat-images-").tempdir_in(&req.ctx.job_dir)?)
+        };
+        if let Some(dir) = &image_dir {
+            for (index, image) in req.images.iter().enumerate() {
+                let path = dir.path().join(format!("{}.png", index + 1));
+                write_private(&path, &image.png)?;
+                cmd.arg("--image").arg(path);
+                input.push_str(&format!("\nImage {}: {}", index + 1, crate::agent_loop::image_label(image)));
+            }
+        }
+        cmd.args(["--", "-"]);
         cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).kill_on_drop(true);
         let child = cmd.spawn().map_err(|e| AiError::Unavailable(e.to_string()))?;
-        let input = format!("{}\n\n---\n\n{}", req.system, transcript(&req));
         pump(child, input, &tx, parse_codex).await
     }
 }
@@ -357,6 +382,57 @@ mod tests {
         if let Some(line) = text.lines().find(|l| l.starts_with("DATA:")) {
             assert!(!line.contains("keys"), "data dir listing shows keys: {line}");
         }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn cli_providers_send_images_as_input() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let fixture = tempfile::tempdir().unwrap();
+        let dir = fixture.path();
+        let program = dir.join("provider");
+        let request = || AgentRequest {
+            system: "test".into(),
+            history: vec![],
+            user: "What do these images show?".into(),
+            images: vec![
+                crate::InputImage { name: "one.png".into(), png: b"one".to_vec(), previous_turn: false },
+                crate::InputImage { name: "two.png".into(), png: b"two".to_vec(), previous_turn: true },
+            ],
+            mcp_command: ("test".into(), vec![]),
+            mcp_env: vec![],
+            sandbox: None,
+            registry: jugg_tools::Registry::standard(&Default::default(), dir),
+            ctx: jugg_tools::ToolContext { job_dir: dir.to_path_buf(), brand: Default::default(), approved: false },
+        };
+        let install = |script| {
+            std::fs::write(&program, script).unwrap();
+            std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
+        };
+
+        install("#!/bin/sh\ncat > claude-input.json\n");
+        let (tx, _rx) = mpsc::channel(8);
+        ClaudeCodeCli { bin: program.display().to_string(), model: None }.run(request(), tx).await.unwrap();
+        let input: Value = serde_json::from_slice(&std::fs::read(dir.join("claude-input.json")).unwrap()).unwrap();
+        assert_eq!(input["message"]["content"][2]["source"]["data"], "b25l");
+        assert_eq!(input["message"]["content"][4]["source"]["data"], "dHdv");
+
+        install(r#"#!/bin/sh
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --image) cat "$2" >> codex-images; shift ;;
+  esac
+  shift
+done
+cat > codex-prompt
+"#);
+        let (tx, _rx) = mpsc::channel(8);
+        CodexCli { bin: program.display().to_string(), model: None }.run(request(), tx).await.unwrap();
+        assert_eq!(std::fs::read(dir.join("codex-images")).unwrap(), b"onetwo");
+        let prompt = std::fs::read_to_string(dir.join("codex-prompt")).unwrap();
+        assert!(prompt.contains("earlier message") && prompt.contains("two.png"));
+        assert!(!dir.read_dir().unwrap().any(|entry| entry.unwrap().file_name().to_string_lossy().starts_with(".chat-images-")));
     }
 
     #[test]

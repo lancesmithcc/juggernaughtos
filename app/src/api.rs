@@ -79,7 +79,18 @@ pub struct JobView {
 pub struct TurnTicket {
     pub conversation_id: String,
     pub turn_id: String,
+    #[serde(default)]
+    pub images: Vec<ChatImage>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ChatImage {
+    pub id: String,
+    pub name: String,
+}
+
+pub const MAX_CHAT_IMAGES: usize = 4;
+pub const MAX_CHAT_IMAGE_BYTES: usize = 10 * 1024 * 1024;
 
 /// Mirror of `jugg_ai::AgentEvent` as it arrives over Server-Sent Events.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -235,11 +246,7 @@ pub async fn get_overview() -> Result<Overview, ServerFnError> {
 pub async fn start_turn(conversation_id: Option<String>, text: String) -> Result<TurnTicket, ServerFnError> {
     let st = ctx::state()?;
     let user = ctx::user(&st).await?;
-    let text = text.trim().to_string();
-    if text.is_empty() || text.len() > 20_000 {
-        return Err(ServerFnError::new("Messages must be 1–20,000 characters."));
-    }
-    crate::server::start_turn(&st, &user, conversation_id, text).await.map_err(ServerFnError::new)
+    crate::server::start_turn(&st, &user, conversation_id, text, vec![]).await.map_err(ServerFnError::new)
 }
 
 // ---------------------------------------------------------------- setup + sign-in

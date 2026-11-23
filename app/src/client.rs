@@ -23,6 +23,10 @@ mod js {
         pub fn dropped_url(ev: &JsValue) -> String;
         #[wasm_bindgen(js_name = uploadHandoff)]
         pub fn upload_handoff(id: &str, file: &JsValue) -> js_sys::Promise;
+        #[wasm_bindgen(js_name = filesFromEvent)]
+        pub fn files_from_event(ev: &JsValue) -> js_sys::Array;
+        #[wasm_bindgen(js_name = sendChatImages)]
+        pub fn send_chat_images(conversation: &str, text: &str, files: js_sys::Array) -> js_sys::Promise;
         #[wasm_bindgen(js_name = copyText)]
         pub fn copy_text(text: &str) -> js_sys::Promise;
     }
@@ -54,7 +58,25 @@ pub async fn sleep_ms(ms: i32) {
 /// Upload the owner's image for a hand-off. Ok(view) or a message to show.
 #[cfg(feature = "hydrate")]
 pub async fn upload_handoff(id: &str, file: &wasm_bindgen::JsValue) -> Result<crate::api::HandoffView, String> {
-    let raw = wasm_bindgen_futures::JsFuture::from(js::upload_handoff(id, file)).await.ok().and_then(|v| v.as_string()).unwrap_or_default();
+    upload_result(js::upload_handoff(id, file)).await
+}
+
+#[cfg(feature = "hydrate")]
+pub fn chat_files(ev: &wasm_bindgen::JsValue) -> Vec<web_sys::File> {
+    use wasm_bindgen::JsCast;
+    js::files_from_event(ev).iter().filter_map(|file| file.dyn_into().ok()).collect()
+}
+
+#[cfg(feature = "hydrate")]
+pub async fn send_chat_images(conversation: Option<String>, text: String, files: Vec<web_sys::File>) -> Result<crate::api::TurnTicket, String> {
+    upload_result(js::send_chat_images(
+        conversation.as_deref().unwrap_or_default(), &text, files.into_iter().collect(),
+    )).await
+}
+
+#[cfg(feature = "hydrate")]
+async fn upload_result<T: serde::de::DeserializeOwned>(request: js_sys::Promise) -> Result<T, String> {
+    let raw = wasm_bindgen_futures::JsFuture::from(request).await.ok().and_then(|v| v.as_string()).unwrap_or_default();
     let v: serde_json::Value = serde_json::from_str(&raw).map_err(|_| "Upload failed.".to_string())?;
     if v["ok"] == true {
         serde_json::from_str(v["json"].as_str().unwrap_or_default()).map_err(|_| "Upload failed.".to_string())
