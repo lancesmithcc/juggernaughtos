@@ -13,6 +13,9 @@ pub struct Overview {
     pub provider: String,
     pub provider_ready: bool,
     pub suggestions: Vec<String>,
+    /// Go live has a step waiting on the owner.
+    #[serde(default)]
+    pub go_live_needs_you: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -202,6 +205,13 @@ mod ctx {
         crate::server::session_user(st, &headers).await.ok_or_else(|| ServerFnError::new("Please sign in."))
     }
 
+    /// Signed in as the owner (Go live touches the domain, DNS and hosting).
+    pub async fn owner(st: &AppState) -> Result<String, ServerFnError> {
+        let user = user(st).await?;
+        let role: Option<String> = jugg_db::sqlx::query_scalar("SELECT role FROM users WHERE id = ? AND disabled_at IS NULL").bind(&user).fetch_optional(&st.pool).await.map_err(|e| ServerFnError::new(e.to_string()))?;
+        if role.as_deref() == Some("owner") { Ok(user) } else { Err(ServerFnError::new("Only the owner can do this.")) }
+    }
+
     pub async fn ip() -> String {
         leptos_axum::extract::<axum::extract::ConnectInfo<std::net::SocketAddr>>().await.map(|c| crate::server::client_ip(&c.0)).unwrap_or_else(|_| "unknown".into())
     }
@@ -217,6 +227,82 @@ mod ctx {
     }
 }
 
+// ---------------------------------------------------------------- go live
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct GoLiveStep {
+    pub key: String,
+    pub title: String,
+    /// done | active | needs_you | waiting | todo
+    pub status: String,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct GoLiveView {
+    pub domain: Option<String>,
+    pub registered: Option<bool>,
+    pub registrar: Option<String>,
+    pub cloudflare_connected: bool,
+    pub zone_status: Option<String>,
+    /// Cloudflare's nameservers for the domain.
+    pub nameservers: Vec<String>,
+    /// What public DNS shows right now.
+    pub current_ns: Vec<String>,
+    pub target: Option<String>,
+    pub error: Option<String>,
+    pub checked_at: Option<i64>,
+    /// Title of the first step waiting on the owner.
+    pub needs_you: Option<String>,
+    pub steps: Vec<GoLiveStep>,
+    pub token_url: String,
+    pub sign_up_url: String,
+    pub buy_url: String,
+}
+
+#[server]
+pub async fn go_live() -> Result<GoLiveView, ServerFnError> {
+    let st = ctx::state()?;
+    ctx::owner(&st).await?;
+    Ok(crate::golive::view(&st.site).await)
+}
+
+#[server]
+pub async fn go_live_check() -> Result<GoLiveView, ServerFnError> {
+    let st = ctx::state()?;
+    ctx::owner(&st).await?;
+    crate::golive::refresh(&st.site).await;
+    Ok(crate::golive::view(&st.site).await)
+}
+
+#[server]
+pub async fn go_live_domain(domain: String) -> Result<GoLiveView, ServerFnError> {
+    let st = ctx::state()?;
+    ctx::owner(&st).await?;
+    crate::golive::set_domain(&st.site, &domain).await.map_err(ServerFnError::new)
+}
+
+#[server]
+pub async fn go_live_token(token: String) -> Result<GoLiveView, ServerFnError> {
+    let st = ctx::state()?;
+    ctx::owner(&st).await?;
+    crate::golive::save_token(&st.site, &token).await.map_err(ServerFnError::new)
+}
+
+#[server]
+pub async fn go_live_forget_token() -> Result<GoLiveView, ServerFnError> {
+    let st = ctx::state()?;
+    ctx::owner(&st).await?;
+    crate::golive::forget_token(&st.site).await.map_err(ServerFnError::new)
+}
+
+#[server]
+pub async fn go_live_target(target: String) -> Result<GoLiveView, ServerFnError> {
+    let st = ctx::state()?;
+    ctx::owner(&st).await?;
+    crate::golive::set_target(&st.site, &target).await.map_err(ServerFnError::new)
+}
+
 // ---------------------------------------------------------------- overview + chat
 
 #[server]
@@ -226,7 +312,7 @@ pub async fn get_overview() -> Result<Overview, ServerFnError> {
     let signed_in = ctx::user(&st).await.is_ok();
     let brand = st.brand.read().await.name.clone();
     if !signed_in {
-        return Ok(Overview { business: brand, has_logo: false, setup_complete, signed_in, provider: String::new(), provider_ready: false, suggestions: vec![] });
+        return Ok(Overview { business: brand, has_logo: false, setup_complete, signed_in, provider: String::new(), provider_ready: false, suggestions: vec![], go_live_needs_you: false });
     }
     let provider = st.provider().await;
     let provider_ready = provider.health().await.is_ok();
@@ -239,6 +325,7 @@ pub async fn get_overview() -> Result<Overview, ServerFnError> {
         provider: provider.label(),
         provider_ready,
         suggestions: crate::server::suggestions(&st, setup_complete, provider_ready).await,
+        go_live_needs_you: crate::golive::view(&st.site).await.needs_you.is_some(),
     })
 }
 

@@ -148,6 +148,18 @@ Internal review of the whole system, done 2026-11-22. Each finding and what chan
 - An earlier Playwright worker that drove ChatGPT was removed: ChatGPT's Cloudflare check and
   Google sign-in block automated browsers, and we don't build bot-check evasion.
 
+### Go live (domain and Cloudflare)
+
+- Owner-only server functions. The Cloudflare API token is checked with Cloudflare before it is kept,
+  then sealed (`golive:cloudflare_token`) like other provider secrets; it is never sent to the browser
+  or to the agent, and the agent is told never to ask for it in chat. The pre-filled token link asks
+  only for Zone Edit, DNS Edit and Account Settings Read.
+- Lookups use public services with the domain name only: RDAP (`rdap.org`) for registration and
+  registrar, DNS over HTTPS (`cloudflare-dns.com`) for nameservers. Domains are normalised to plain
+  ASCII hostnames before any request.
+- Juggernaught never buys anything: the owner registers domains on Cloudflare's own page.
+- Every change (domain set, Cloudflare connected or removed, zone added) is audit-logged.
+
 ### Images attached to chat messages
 
 - `POST /api/chat/turn` (multipart): session cookie plus an `X-Jugg-Chat: 1` header a cross-site

@@ -594,3 +594,34 @@ fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: 10px; }
 .logo-pack-status { display: flex; align-items: center; gap: 8px; margin: 0; padding: 0 14px 14px; color: var(--ink-soft); font-size: 13px; }
 .logo-pack { display: grid; gap: 8px; padding: 0 14px 14px; }
 .logo-pack ul { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+
+/* Go live */
+.nav-badge { margin-left: auto; padding: 1px 7px; border-radius: var(--r-pill); font-size: 11px; font-weight: 700; background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+.golive-steps { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.golive-step { border: 1px solid var(--line); border-radius: 18px; background: var(--raised); padding: 16px 18px; }
+.golive-step[data-status="needs_you"] { border-color: color-mix(in srgb, var(--warn) 55%, var(--line)); }
+.golive-step[data-status="todo"] { opacity: 0.6; }
+.golive-step-head { display: grid; grid-template-columns: auto 1fr auto; gap: 14px; align-items: start; }
+.golive-step-head h2 { margin: 2px 0 0; font-size: 16px; }
+.golive-step-head p { margin: 4px 0 0; color: var(--ink-soft); font-size: 14px; }
+.golive-num { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--surface-sunk); font-weight: 700; font-size: 13px; }
+.golive-step[data-status="done"] .golive-num { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+.golive-badge { padding: 2px 9px; border-radius: var(--r-pill); font-size: 11.5px; font-weight: 700; background: var(--surface-sunk); color: var(--ink-soft); white-space: nowrap; }
+.golive-badge.s-done { color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, transparent); }
+.golive-badge.s-needs_you { color: var(--warn); background: color-mix(in srgb, var(--warn) 16%, transparent); }
+.golive-badge.s-waiting, .golive-badge.s-active { color: var(--primary); background: var(--primary-soft); }
+.golive-step-body { display: grid; gap: 12px; margin: 14px 0 0 42px; }
+.golive-todo { display: grid; gap: 10px; margin: 0; padding-left: 18px; }
+.golive-todo li { line-height: 1.5; }
+.golive-inline { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.golive-inline input { flex: 1 1 260px; min-width: 0; }
+.ns-list { display: grid; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
+.ns-list li { display: flex; align-items: center; gap: 10px; }
+.ns-list code { padding: 4px 8px; border-radius: 8px; background: var(--surface-sunk); user-select: all; }
+.golive-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 640px) {
+  .golive-choices { grid-template-columns: 1fr; }
+  .golive-step-body { margin-left: 0; }
+  .golive-step-head { grid-template-columns: auto 1fr; }
+  .golive-badge { grid-column: 2; justify-self: start; }
+}

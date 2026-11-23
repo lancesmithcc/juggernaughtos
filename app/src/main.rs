@@ -568,6 +568,7 @@ async fn main() {
             let st_cfg = state.cfg.clone();
             let routes = generate_route_list(App);
             tokio::spawn(juggernaught::assets::worker(state.clone()));
+            tokio::spawn(juggernaught::golive::watch(state.clone()));
             {
                 // Agent bridge: sandboxed CLIs reach the tools only through this socket.
                 let st = state.clone();

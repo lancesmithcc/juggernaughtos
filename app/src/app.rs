@@ -52,6 +52,7 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("brand") view=BrandPanel/>
                     <Route path=path!("security") view=SecurityPanel/>
                     <Route path=path!("settings") view=SettingsPanel/>
+                    <Route path=path!("go-live") view=crate::pages::golive::GoLivePage/>
                 </ParentRoute>
             </Routes>
         </Router>
@@ -93,6 +94,15 @@ fn Workspace() -> impl IntoView {
                     <NavItem href="/brand" icon="◆" label="Brand"/>
                     <NavItem href="/security" icon="◈" label="Security"/>
                     <NavItem href="/settings" icon="⚙" label="Settings"/>
+                    <A href="/go-live" attr:class="nav-item">
+                        <span class="nav-icon" aria-hidden="true">"↗"</span>
+                        <span>"Go live"</span>
+                        <Suspense fallback=|| ()>
+                            {move || Suspend::new(async move {
+                                overview.await.ok().filter(|o| o.go_live_needs_you).map(|_| view! { <span class="nav-badge" title="Go live needs you">"Needs you"</span> })
+                            })}
+                        </Suspense>
+                    </A>
                 </nav>
                 <div class="sidebar-foot">
                     <Suspense fallback=|| view! { <span class="pill">"…"</span> }>

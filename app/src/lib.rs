@@ -11,6 +11,8 @@ pub mod assets;
 #[cfg(feature = "ssr")]
 pub mod chat_images;
 #[cfg(feature = "ssr")]
+pub mod golive;
+#[cfg(feature = "ssr")]
 pub mod images;
 #[cfg(feature = "ssr")]
 pub mod keys;

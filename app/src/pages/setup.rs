@@ -236,6 +236,7 @@ fn SecureStep(save: Action<WizardInput, Result<crate::api::SetupResult, ServerFn
                 </div>
             </div>
             <footer class="setup-foot end">
+                <button class="btn ghost" on:click=|_| crate::client::go("/go-live")>"Put it online"</button>
                 <button class="btn primary" on:click=|_| crate::client::go("/")>"Open my workspace"</button>
             </footer>
         </div>

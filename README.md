@@ -55,6 +55,16 @@ Change the email the owner signs in with (for example after a test setup), from 
 juggernaught owner set-email you@example.com
 ```
 
+## Go live
+
+**Go live** in the sidebar puts the workspace and website online at your own domain, step by step.
+It does the technical parts itself and stops only for what's yours to do: making a free Cloudflare
+account, buying the domain (on Cloudflare's own page; Juggernaught never pays for anything), creating
+one API token from a pre-filled link, and changing nameservers at your registrar. It checks in the
+background, carries on by itself, and emails you when something moves (if mail is set up). You can
+also just ask in chat ("put my site online"). Choosing a VPS (set up over SSH) or this computer as a
+home server (Cloudflare Tunnel) comes in the next update.
+
 ## Install on a server
 
 On a fresh Ubuntu 24.04+ or Debian 12+ machine with DNS for `example.com`, `www.` and `admin.`

@@ -125,6 +125,8 @@ impl AppState {
         registry.register(crate::studio::LogoConcepts(site.clone()));
         registry.register(crate::studio::AdoptLogo(site.clone()));
         registry.register(crate::studio::LogoFiles(site.clone()));
+        registry.register(crate::golive::GoLiveStatus(site.clone()));
+        registry.register(crate::golive::GoLiveDomain(site.clone()));
         registry.register(crate::studio::SocialPost(site.clone()));
         registry.register(crate::studio::BrandBook(site.clone()));
         registry.register(crate::studio::GenerateImage(site.clone()));
@@ -805,6 +807,12 @@ pub async fn suggestions(st: &AppState, setup_complete: bool, provider_ready: bo
     }
     if pages == 0 {
         s.push("Build my homepage".into());
+    }
+    if !st.cfg.dev || st.cfg.domain.is_none() {
+        let live: Option<String> = sqlx::query_scalar("SELECT zone_status FROM golive WHERE id = 'golive'").fetch_optional(&st.pool).await.ok().flatten().flatten();
+        if live.as_deref() != Some("active") {
+            s.push("Put my site online".into());
+        }
     }
     if count("email_signature").await == 0 {
         s.push("Make my email signature".into());
