@@ -68,6 +68,28 @@ pub async fn create_user(pool: &sqlx::SqlitePool, ring: &jugg_crypto::Keyring, e
     Ok(id)
 }
 
+/// Change a user's sign-in email (admin command on the box). Fails if another
+/// active user already has it.
+pub async fn set_email(pool: &sqlx::SqlitePool, ring: &jugg_crypto::Keyring, user_id: &str, email: &str) -> Result<()> {
+    let email = normalise_email(email);
+    let ok = email.len() <= 254 && email.split_once('@').is_some_and(|(l, d)| !l.is_empty() && d.contains('.') && !d.starts_with('.') && !d.ends_with('.')) && !email.contains(char::is_whitespace);
+    if !ok {
+        return Err(AuthError::Other("that doesn't look like an email address".into()));
+    }
+    if let Some(other) = find_user_by_email(pool, ring, &email).await? {
+        if other != user_id {
+            return Err(AuthError::Other("another user already signs in with that email".into()));
+        }
+    }
+    let bidx = jugg_crypto::blind_index(ring, email.as_bytes())?;
+    let enc = jugg_crypto::seal(ring, email.as_bytes(), format!("users:email:{user_id}").as_bytes())?;
+    let n = sqlx::query("UPDATE users SET email_enc = ?, email_bidx = ? WHERE id = ?").bind(enc).bind(bidx).bind(user_id).execute(pool).await?.rows_affected();
+    if n == 0 {
+        return Err(AuthError::Other("no such user".into()));
+    }
+    Ok(())
+}
+
 pub async fn find_user_by_email(pool: &sqlx::SqlitePool, ring: &jugg_crypto::Keyring, email: &str) -> Result<Option<String>> {
     let bidx = jugg_crypto::blind_index(ring, normalise_email(email).as_bytes())?;
     Ok(sqlx::query_scalar("SELECT id FROM users WHERE email_bidx = ? AND disabled_at IS NULL").bind(bidx).fetch_optional(pool).await?)

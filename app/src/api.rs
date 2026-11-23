@@ -264,8 +264,12 @@ pub async fn request_magic_link(email: String) -> Result<Option<String>, ServerF
     }
     // Each request counts against the IP so the form can't be used to spam inboxes.
     st.sign_in_failed(&ip, None, "magic_link_requested");
-    let link = crate::server::request_magic_link(&st, &email).await;
     let local = ip.parse::<std::net::IpAddr>().is_ok_and(|a| a.is_loopback());
+    // Development, on this machine only: say plainly when the address isn't the owner's.
+    if st.cfg.dev && local && jugg_auth::find_user_by_email(&st.pool, &st.ring, &email).await.ok().flatten().is_none() {
+        return Err(ServerFnError::new("No account on this box uses that email. Change it with: juggernaught owner set-email you@example.com (development-only message)"));
+    }
+    let link = crate::server::request_magic_link(&st, &email).await;
     Ok(link.filter(|_| st.cfg.dev && local))
 }
 

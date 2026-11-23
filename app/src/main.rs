@@ -64,6 +64,11 @@ async fn main() {
             #[command(subcommand)]
             cmd: KeysCmd,
         },
+        /// Manage the owner account from the box (e.g. change the sign-in email).
+        Owner {
+            #[command(subcommand)]
+            cmd: OwnerCmd,
+        },
         /// Export the signed audit log, or verify an export offline.
         Audit {
             #[command(subcommand)]
@@ -90,6 +95,12 @@ async fn main() {
             #[arg(long)]
             fingerprint: Option<String>,
         },
+    }
+
+    #[derive(Subcommand)]
+    enum OwnerCmd {
+        /// Change the email the owner signs in with (passkeys stay as they are).
+        SetEmail { email: String },
     }
 
     #[derive(Subcommand)]
@@ -186,7 +197,7 @@ async fn main() {
         std::env::set_var("JUGG_DEV_ROOT", cfg.data_dir.parent().unwrap_or(&cfg.data_dir));
     }
 
-    let quiet = matches!(cli.cmd, Some(Cmd::Mcp { .. }) | Some(Cmd::SetupUrl) | Some(Cmd::Doctor) | Some(Cmd::Connect { .. }) | Some(Cmd::Firewall { .. }) | Some(Cmd::Keys { .. }) | Some(Cmd::Audit { .. }) | Some(Cmd::Steward { status: true }) | Some(Cmd::Tools { .. }));
+    let quiet = matches!(cli.cmd, Some(Cmd::Mcp { .. }) | Some(Cmd::SetupUrl) | Some(Cmd::Doctor) | Some(Cmd::Connect { .. }) | Some(Cmd::Firewall { .. }) | Some(Cmd::Keys { .. }) | Some(Cmd::Audit { .. }) | Some(Cmd::Owner { .. }) | Some(Cmd::Steward { status: true }) | Some(Cmd::Tools { .. }));
     let filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| if quiet { "warn,sqlx=warn".into() } else { "info,sqlx=warn".into() });
     tracing_subscriber::fmt().with_env_filter(filter).with_writer(std::io::stderr).init();
 
@@ -497,6 +508,19 @@ async fn main() {
             }
             AuditCmd::Verify { .. } => unreachable!(),
         },
+        Cmd::Owner { cmd: OwnerCmd::SetEmail { email } } => {
+            let owner: Option<String> = jugg_db::sqlx::query_scalar("SELECT id FROM users WHERE role = 'owner' AND disabled_at IS NULL ORDER BY created_at LIMIT 1").fetch_optional(&state.pool).await.unwrap_or(None);
+            let Some(owner) = owner else {
+                eprintln!("No owner yet: finish setup first (juggernaught setup-url).");
+                std::process::exit(1);
+            };
+            if let Err(e) = jugg_auth::set_email(&state.pool, &state.ring, &owner, &email).await {
+                eprintln!("Couldn't change the email: {e}");
+                std::process::exit(1);
+            }
+            let _ = jugg_db::audit::append(&state.pool, Some(&state.signer), "admin-cli", "owner.email_changed", &serde_json::json!({})).await;
+            println!("Owner sign-in email changed. Email links now go to the new address; passkeys are unchanged.");
+        }
         Cmd::Doctor => {
             let provider = state.provider().await;
             println!("database     ok  {}", state.cfg.db_path().display());

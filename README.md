@@ -49,6 +49,12 @@ Connect intelligence in **Settings → Intelligence**, or from the server shell:
 juggernaught setup-url
 ```
 
+Change the email the owner signs in with (for example after a test setup), from the box:
+
+```bash
+juggernaught owner set-email you@example.com
+```
+
 ## Install on a server
 
 On a fresh Ubuntu 24.04+ or Debian 12+ machine with DNS for `example.com`, `www.` and `admin.`
