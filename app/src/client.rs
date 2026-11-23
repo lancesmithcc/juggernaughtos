@@ -12,6 +12,8 @@ mod js {
         pub fn passkey_register(label: &str) -> js_sys::Promise;
         #[wasm_bindgen(js_name = passkeyLogin)]
         pub fn passkey_login() -> js_sys::Promise;
+        #[wasm_bindgen(js_name = passkeyHere)]
+        pub fn passkey_here() -> bool;
     }
     #[wasm_bindgen(module = "/js/handoff.js")]
     extern "C" {
@@ -82,6 +84,16 @@ pub async fn login_passkey() -> String {
     }
     #[allow(unreachable_code)]
     "unavailable".into()
+}
+
+/// This browser made or used a Juggernaught passkey before.
+pub fn passkey_here() -> bool {
+    #[cfg(feature = "hydrate")]
+    {
+        return js::passkey_here();
+    }
+    #[allow(unreachable_code)]
+    true
 }
 
 /// Full page load to `path` (picks up a fresh session cookie everywhere).

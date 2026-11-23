@@ -26,8 +26,9 @@ async function post(url, body) {
   return j;
 }
 
-function friendly(e) {
-  if (e && e.name === "NotAllowedError") return "Cancelled, or the device didn't confirm.";
+function friendly(e, login) {
+  // On sign-in this usually means the browser had no passkey for us (it offered a QR code).
+  if (e && e.name === "NotAllowedError") return login ? "not_here" : "Cancelled, or the device didn't confirm.";
   if (e && e.name === "InvalidStateError") return "This device already has a passkey here.";
   return (e && e.message) || String(e);
 }
@@ -44,6 +45,10 @@ export async function passkeyRegister(label) {
     pk.challenge = b64u.dec(pk.challenge);
     pk.user.id = b64u.dec(pk.user.id);
     (pk.excludeCredentials || []).forEach((c) => (c.id = b64u.dec(c.id)));
+    // A discoverable passkey on this device (Touch ID / Face ID / Windows Hello). On a
+    // Mac, Safari and Chrome can keep it in iCloud Keychain, which syncs to the phone.
+    pk.authenticatorSelection = { ...(pk.authenticatorSelection || {}), residentKey: "required", requireResidentKey: true, userVerification: "required" };
+    pk.hints = ["client-device"];
     const cred = await navigator.credentials.create({ publicKey: pk });
     const res = cred.response;
     await post("/auth/passkey/register/finish", {
@@ -61,9 +66,25 @@ export async function passkeyRegister(label) {
         },
       },
     });
+    markHere();
     return "ok";
   } catch (e) {
     return friendly(e);
+  }
+}
+
+// Remember that this browser holds a Juggernaught passkey (to stop offering one).
+function markHere() {
+  try {
+    localStorage.setItem("jugg-passkey-here", "1");
+  } catch {}
+}
+
+export function passkeyHere() {
+  try {
+    return localStorage.getItem("jugg-passkey-here") === "1";
+  } catch {
+    return false;
   }
 }
 
@@ -74,6 +95,7 @@ export async function passkeyLogin() {
     const pk = options.publicKey;
     pk.challenge = b64u.dec(pk.challenge);
     (pk.allowCredentials || []).forEach((c) => (c.id = b64u.dec(c.id)));
+    pk.hints = ["client-device"];
     const cred = await navigator.credentials.get({ publicKey: pk, mediation: "optional" });
     const res = cred.response;
     await post("/auth/passkey/login/finish", {
@@ -91,8 +113,9 @@ export async function passkeyLogin() {
         },
       },
     });
+    markHere();
     return "ok";
   } catch (e) {
-    return friendly(e);
+    return friendly(e, true);
   }
 }

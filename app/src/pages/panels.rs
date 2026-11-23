@@ -297,6 +297,7 @@ fn SignIn() -> impl IntoView {
                             } else {
                                 view! { <ul class="plain">{m.passkeys.iter().map(|p| view! { <li>{p.clone()}</li> }).collect_view()}</ul> }.into_any()
                             }}
+                            <p class="hint">"A passkey works in the browser or keychain it was made in. On a Mac, choose iCloud Keychain when asked and it also works in Safari, Chrome and on your iPhone. Add one in each browser you sign in from otherwise."</p>
                             <AddPasskey on_done=refresh/>
                         </section>
                         <section class="secure-block">

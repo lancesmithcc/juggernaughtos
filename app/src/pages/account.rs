@@ -131,14 +131,17 @@ pub fn RegenerateRecovery(#[prop(into)] on_done: Callback<()>) -> impl IntoView 
 pub fn PasskeyNudge() -> impl IntoView {
     let show = RwSignal::new(false);
     let added = RwSignal::new(false);
+    // The account has passkeys, just not in this browser.
+    let elsewhere = RwSignal::new(false);
     const KEY: &str = "jugg-passkey-nudge";
     Effect::new(move |_| {
-        if session_flag(KEY) {
+        if session_flag(KEY) || crate::client::passkey_here() {
             return;
         }
         leptos::task::spawn_local(async move {
             if let Ok(m) = crate::api::get_sign_in_methods().await {
-                show.set(m.passkeys.is_empty());
+                elsewhere.set(!m.passkeys.is_empty());
+                show.set(true);
             }
         });
     });
@@ -155,8 +158,12 @@ pub fn PasskeyNudge() -> impl IntoView {
         <Show when=move || show.get()>
             <div class="modal-backdrop" on:click=move |_| dismiss()>
                 <div class="modal" role="dialog" aria-modal="true" aria-labelledby="pk-title" on:click=|ev| ev.stop_propagation()>
-                    <h2 id="pk-title">{move || if added.get() { "You're set" } else { "Sign in with your fingerprint next time" }}</h2>
-                    <p>"Add a passkey and next time you just touch Touch ID (or use Face ID or Windows Hello) instead of waiting for an email link. It stays on this device and can't be phished."</p>
+                    <h2 id="pk-title">{move || if added.get() { "You're set" } else if elsewhere.get() { "Add your fingerprint in this browser too" } else { "Sign in with your fingerprint next time" }}</h2>
+                    <p>{move || if elsewhere.get() {
+                        "Your passkey lives in another browser, so this one can't use it. Add one here and next time you just touch Touch ID. On a Mac, save it to iCloud Keychain when asked and it works in Safari, Chrome and on your iPhone too."
+                    } else {
+                        "Add a passkey and next time you just touch Touch ID (or use Face ID or Windows Hello) instead of waiting for an email link. On a Mac, save it to iCloud Keychain when asked and it works in Safari, Chrome and on your iPhone too. It can't be phished."
+                    }}</p>
                     <AddPasskey on_done=done/>
                     <Show when=move || !added.get()>
                         <button class="linkish" type="button" on:click=move |_| dismiss()>"Not now"</button>

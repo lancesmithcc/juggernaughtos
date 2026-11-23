@@ -41,10 +41,14 @@ pub fn LoginPage() -> impl IntoView {
             working.set(false);
             if r == "ok" {
                 crate::client::go("/");
-            } else if r.contains("No passkeys") {
+            } else if r.contains("No passkeys") || r == "not_here" {
                 // First time: one email link, then the workspace offers to add a passkey.
                 mode.set(Mode::Link);
-                note.set(Some("No passkey on this account yet. Sign in with an email link this once; right after, you'll be asked to add your fingerprint.".into()));
+                note.set(Some(if r == "not_here" {
+                    "No passkey for Juggernaught in this browser (or it was cancelled). Passkeys live in the browser or keychain they were made in. Sign in with an email link here once; right after, you'll be asked to add your fingerprint in this browser.".to_string()
+                } else {
+                    "No passkey on this account yet. Sign in with an email link this once; right after, you'll be asked to add your fingerprint.".to_string()
+                }));
             } else {
                 msg.set(Some(r));
             }
