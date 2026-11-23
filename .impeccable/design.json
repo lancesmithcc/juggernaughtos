@@ -1,0 +1,651 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-23T14:14:59+00:00",
+  "title": "Design System: Juggernaught OS",
+  "extensions": {
+    "colorMeta": {
+      "juggernaught-green": {
+        "role": "primary",
+        "displayName": "Tree-of-Life Green",
+        "canonical": "#9fcf6b",
+        "tonalRamp": [
+          "oklch(15.0% 0.139 130.1)",
+          "oklch(26.4% 0.139 130.1)",
+          "oklch(37.9% 0.139 130.1)",
+          "oklch(49.3% 0.139 130.1)",
+          "oklch(60.7% 0.139 130.1)",
+          "oklch(72.1% 0.139 130.1)",
+          "oklch(83.6% 0.139 130.1)",
+          "oklch(95.0% 0.139 130.1)"
+        ],
+        "note": "Runtime token --brand. Replaced inside .workspace by the business primary via /brand.css; --brand-ink, --brand-text, --brand-text-dark are recomputed for WCAG AA."
+      },
+      "juggernaught-green-text": {
+        "role": "primary",
+        "displayName": "Deep Leaf",
+        "canonical": "#3b6b1f",
+        "tonalRamp": [
+          "oklch(15.0% 0.119 136.1)",
+          "oklch(26.4% 0.119 136.1)",
+          "oklch(37.9% 0.119 136.1)",
+          "oklch(49.3% 0.119 136.1)",
+          "oklch(60.7% 0.119 136.1)",
+          "oklch(72.1% 0.119 136.1)",
+          "oklch(83.6% 0.119 136.1)",
+          "oklch(95.0% 0.119 136.1)"
+        ]
+      },
+      "juggernaught-green-text-dark": {
+        "role": "primary",
+        "displayName": "Pale Leaf",
+        "canonical": "#a9d77a",
+        "tonalRamp": [
+          "oklch(15.0% 0.131 130.3)",
+          "oklch(26.4% 0.131 130.3)",
+          "oklch(37.9% 0.131 130.3)",
+          "oklch(49.3% 0.131 130.3)",
+          "oklch(60.7% 0.131 130.3)",
+          "oklch(72.1% 0.131 130.3)",
+          "oklch(83.6% 0.131 130.3)",
+          "oklch(95.0% 0.131 130.3)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#111111",
+        "tonalRamp": [
+          "oklch(15.0% 0.0 89.9)",
+          "oklch(26.4% 0.0 89.9)",
+          "oklch(37.9% 0.0 89.9)",
+          "oklch(49.3% 0.0 89.9)",
+          "oklch(60.7% 0.0 89.9)",
+          "oklch(72.1% 0.0 89.9)",
+          "oklch(83.6% 0.0 89.9)",
+          "oklch(95.0% 0.0 89.9)"
+        ]
+      },
+      "ink-soft": {
+        "role": "neutral",
+        "displayName": "Ink Soft",
+        "canonical": "#4d4d4d",
+        "tonalRamp": [
+          "oklch(15.0% 0.0 89.9)",
+          "oklch(26.4% 0.0 89.9)",
+          "oklch(37.9% 0.0 89.9)",
+          "oklch(49.3% 0.0 89.9)",
+          "oklch(60.7% 0.0 89.9)",
+          "oklch(72.1% 0.0 89.9)",
+          "oklch(83.6% 0.0 89.9)",
+          "oklch(95.0% 0.0 89.9)"
+        ]
+      },
+      "ink-faint": {
+        "role": "neutral",
+        "displayName": "Ink Faint",
+        "canonical": "#6b6b6b",
+        "tonalRamp": [
+          "oklch(15.0% 0.0 89.9)",
+          "oklch(26.4% 0.0 89.9)",
+          "oklch(37.9% 0.0 89.9)",
+          "oklch(49.3% 0.0 89.9)",
+          "oklch(60.7% 0.0 89.9)",
+          "oklch(72.1% 0.0 89.9)",
+          "oklch(83.6% 0.0 89.9)",
+          "oklch(95.0% 0.0 89.9)"
+        ]
+      },
+      "page": {
+        "role": "neutral",
+        "displayName": "Paper",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "oklch(15.0% 0.0 89.9)",
+          "oklch(26.4% 0.0 89.9)",
+          "oklch(37.9% 0.0 89.9)",
+          "oklch(49.3% 0.0 89.9)",
+          "oklch(60.7% 0.0 89.9)",
+          "oklch(72.1% 0.0 89.9)",
+          "oklch(83.6% 0.0 89.9)",
+          "oklch(95.0% 0.0 89.9)"
+        ]
+      },
+      "page-sunk": {
+        "role": "neutral",
+        "displayName": "Sunk Paper",
+        "canonical": "#f3f3f1",
+        "tonalRamp": [
+          "oklch(15.0% 0.003 106.4)",
+          "oklch(26.4% 0.003 106.4)",
+          "oklch(37.9% 0.003 106.4)",
+          "oklch(49.3% 0.003 106.4)",
+          "oklch(60.7% 0.003 106.4)",
+          "oklch(72.1% 0.003 106.4)",
+          "oklch(83.6% 0.003 106.4)",
+          "oklch(95.0% 0.003 106.4)"
+        ]
+      },
+      "rule": {
+        "role": "neutral",
+        "displayName": "Rule",
+        "canonical": "#e3e3e0",
+        "tonalRamp": [
+          "oklch(15.0% 0.004 106.5)",
+          "oklch(26.4% 0.004 106.5)",
+          "oklch(37.9% 0.004 106.5)",
+          "oklch(49.3% 0.004 106.5)",
+          "oklch(60.7% 0.004 106.5)",
+          "oklch(72.1% 0.004 106.5)",
+          "oklch(83.6% 0.004 106.5)",
+          "oklch(95.0% 0.004 106.5)"
+        ]
+      },
+      "rule-strong": {
+        "role": "neutral",
+        "displayName": "Strong Rule",
+        "canonical": "#c9c9c5",
+        "tonalRamp": [
+          "oklch(15.0% 0.005 106.5)",
+          "oklch(26.4% 0.005 106.5)",
+          "oklch(37.9% 0.005 106.5)",
+          "oklch(49.3% 0.005 106.5)",
+          "oklch(60.7% 0.005 106.5)",
+          "oklch(72.1% 0.005 106.5)",
+          "oklch(83.6% 0.005 106.5)",
+          "oklch(95.0% 0.005 106.5)"
+        ]
+      },
+      "rail": {
+        "role": "neutral",
+        "displayName": "Cover Stock",
+        "canonical": "#111111",
+        "tonalRamp": [
+          "oklch(15.0% 0.0 89.9)",
+          "oklch(26.4% 0.0 89.9)",
+          "oklch(37.9% 0.0 89.9)",
+          "oklch(49.3% 0.0 89.9)",
+          "oklch(60.7% 0.0 89.9)",
+          "oklch(72.1% 0.0 89.9)",
+          "oklch(83.6% 0.0 89.9)",
+          "oklch(95.0% 0.0 89.9)"
+        ]
+      },
+      "rail-ink": {
+        "role": "neutral",
+        "displayName": "Cover Ink",
+        "canonical": "#f4f4f2",
+        "tonalRamp": [
+          "oklch(15.0% 0.003 106.4)",
+          "oklch(26.4% 0.003 106.4)",
+          "oklch(37.9% 0.003 106.4)",
+          "oklch(49.3% 0.003 106.4)",
+          "oklch(60.7% 0.003 106.4)",
+          "oklch(72.1% 0.003 106.4)",
+          "oklch(83.6% 0.003 106.4)",
+          "oklch(95.0% 0.003 106.4)"
+        ]
+      },
+      "rail-soft": {
+        "role": "neutral",
+        "displayName": "Cover Soft",
+        "canonical": "#a3a3a0",
+        "tonalRamp": [
+          "oklch(15.0% 0.004 106.5)",
+          "oklch(26.4% 0.004 106.5)",
+          "oklch(37.9% 0.004 106.5)",
+          "oklch(49.3% 0.004 106.5)",
+          "oklch(60.7% 0.004 106.5)",
+          "oklch(72.1% 0.004 106.5)",
+          "oklch(83.6% 0.004 106.5)",
+          "oklch(95.0% 0.004 106.5)"
+        ]
+      },
+      "rail-rule": {
+        "role": "neutral",
+        "displayName": "Cover Rule",
+        "canonical": "#2a2a2a",
+        "tonalRamp": [
+          "oklch(15.0% 0.0 89.9)",
+          "oklch(26.4% 0.0 89.9)",
+          "oklch(37.9% 0.0 89.9)",
+          "oklch(49.3% 0.0 89.9)",
+          "oklch(60.7% 0.0 89.9)",
+          "oklch(72.1% 0.0 89.9)",
+          "oklch(83.6% 0.0 89.9)",
+          "oklch(95.0% 0.0 89.9)"
+        ]
+      },
+      "work-ground": {
+        "role": "neutral",
+        "displayName": "Proof Ground",
+        "canonical": "#f1f1ef",
+        "tonalRamp": [
+          "oklch(15.0% 0.003 106.4)",
+          "oklch(26.4% 0.003 106.4)",
+          "oklch(37.9% 0.003 106.4)",
+          "oklch(49.3% 0.003 106.4)",
+          "oklch(60.7% 0.003 106.4)",
+          "oklch(72.1% 0.003 106.4)",
+          "oklch(83.6% 0.003 106.4)",
+          "oklch(95.0% 0.003 106.4)"
+        ]
+      },
+      "ok": {
+        "role": "status",
+        "displayName": "Done",
+        "canonical": "#1f7a45",
+        "tonalRamp": [
+          "oklch(15.0% 0.118 153.0)",
+          "oklch(26.4% 0.118 153.0)",
+          "oklch(37.9% 0.118 153.0)",
+          "oklch(49.3% 0.118 153.0)",
+          "oklch(60.7% 0.118 153.0)",
+          "oklch(72.1% 0.118 153.0)",
+          "oklch(83.6% 0.118 153.0)",
+          "oklch(95.0% 0.118 153.0)"
+        ]
+      },
+      "warn": {
+        "role": "status",
+        "displayName": "Needs You",
+        "canonical": "#8f5600",
+        "tonalRamp": [
+          "oklch(15.0% 0.112 66.7)",
+          "oklch(26.4% 0.112 66.7)",
+          "oklch(37.9% 0.112 66.7)",
+          "oklch(49.3% 0.112 66.7)",
+          "oklch(60.7% 0.112 66.7)",
+          "oklch(72.1% 0.112 66.7)",
+          "oklch(83.6% 0.112 66.7)",
+          "oklch(95.0% 0.112 66.7)"
+        ]
+      },
+      "warn-marker": {
+        "role": "status",
+        "displayName": "Needs You Marker",
+        "canonical": "#e0a64b",
+        "tonalRamp": [
+          "oklch(15.0% 0.127 75.9)",
+          "oklch(26.4% 0.127 75.9)",
+          "oklch(37.9% 0.127 75.9)",
+          "oklch(49.3% 0.127 75.9)",
+          "oklch(60.7% 0.127 75.9)",
+          "oklch(72.1% 0.127 75.9)",
+          "oklch(83.6% 0.127 75.9)",
+          "oklch(95.0% 0.127 75.9)"
+        ]
+      },
+      "err": {
+        "role": "status",
+        "displayName": "Error",
+        "canonical": "#b3261e",
+        "tonalRamp": [
+          "oklch(15.0% 0.178 28.7)",
+          "oklch(26.4% 0.178 28.7)",
+          "oklch(37.9% 0.178 28.7)",
+          "oklch(49.3% 0.178 28.7)",
+          "oklch(60.7% 0.178 28.7)",
+          "oklch(72.1% 0.178 28.7)",
+          "oklch(83.6% 0.178 28.7)",
+          "oklch(95.0% 0.178 28.7)"
+        ]
+      },
+      "dark-ink": {
+        "role": "neutral",
+        "displayName": "Dark Ink",
+        "canonical": "#f2f2ef",
+        "tonalRamp": [
+          "oklch(15.0% 0.004 106.5)",
+          "oklch(26.4% 0.004 106.5)",
+          "oklch(37.9% 0.004 106.5)",
+          "oklch(49.3% 0.004 106.5)",
+          "oklch(60.7% 0.004 106.5)",
+          "oklch(72.1% 0.004 106.5)",
+          "oklch(83.6% 0.004 106.5)",
+          "oklch(95.0% 0.004 106.5)"
+        ]
+      },
+      "dark-page": {
+        "role": "neutral",
+        "displayName": "Dark Paper",
+        "canonical": "#151515",
+        "tonalRamp": [
+          "oklch(15.0% 0.0 89.9)",
+          "oklch(26.4% 0.0 89.9)",
+          "oklch(37.9% 0.0 89.9)",
+          "oklch(49.3% 0.0 89.9)",
+          "oklch(60.7% 0.0 89.9)",
+          "oklch(72.1% 0.0 89.9)",
+          "oklch(83.6% 0.0 89.9)",
+          "oklch(95.0% 0.0 89.9)"
+        ]
+      },
+      "dark-page-sunk": {
+        "role": "neutral",
+        "displayName": "Dark Sunk Paper",
+        "canonical": "#0f0f0f",
+        "tonalRamp": [
+          "oklch(15.0% 0.0 89.9)",
+          "oklch(26.4% 0.0 89.9)",
+          "oklch(37.9% 0.0 89.9)",
+          "oklch(49.3% 0.0 89.9)",
+          "oklch(60.7% 0.0 89.9)",
+          "oklch(72.1% 0.0 89.9)",
+          "oklch(83.6% 0.0 89.9)",
+          "oklch(95.0% 0.0 89.9)"
+        ]
+      },
+      "dark-raised": {
+        "role": "neutral",
+        "displayName": "Dark Raised",
+        "canonical": "#1c1c1c",
+        "tonalRamp": [
+          "oklch(15.0% 0.0 89.9)",
+          "oklch(26.4% 0.0 89.9)",
+          "oklch(37.9% 0.0 89.9)",
+          "oklch(49.3% 0.0 89.9)",
+          "oklch(60.7% 0.0 89.9)",
+          "oklch(72.1% 0.0 89.9)",
+          "oklch(83.6% 0.0 89.9)",
+          "oklch(95.0% 0.0 89.9)"
+        ]
+      },
+      "dark-rule": {
+        "role": "neutral",
+        "displayName": "Dark Rule",
+        "canonical": "#2d2d2b",
+        "tonalRamp": [
+          "oklch(15.0% 0.004 106.6)",
+          "oklch(26.4% 0.004 106.6)",
+          "oklch(37.9% 0.004 106.6)",
+          "oklch(49.3% 0.004 106.6)",
+          "oklch(60.7% 0.004 106.6)",
+          "oklch(72.1% 0.004 106.6)",
+          "oklch(83.6% 0.004 106.6)",
+          "oklch(95.0% 0.004 106.6)"
+        ]
+      },
+      "dark-rail": {
+        "role": "neutral",
+        "displayName": "Dark Cover Stock",
+        "canonical": "#000000",
+        "tonalRamp": [
+          "oklch(15.0% 0.0 0.0)",
+          "oklch(26.4% 0.0 0.0)",
+          "oklch(37.9% 0.0 0.0)",
+          "oklch(49.3% 0.0 0.0)",
+          "oklch(60.7% 0.0 0.0)",
+          "oklch(72.1% 0.0 0.0)",
+          "oklch(83.6% 0.0 0.0)",
+          "oklch(95.0% 0.0 0.0)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "plate": {
+        "displayName": "Plate",
+        "purpose": "Section title or chat greeting on the plate; one per page. Brand heading font replaces Archivo here at 100% width when available."
+      },
+      "plate-number": {
+        "displayName": "Plate Number",
+        "purpose": "Section number before the plate title, at 55% opacity."
+      },
+      "plate-slim": {
+        "displayName": "Plate Slim",
+        "purpose": "Compact plate once a chat thread has started."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Modal titles and empty-state headings."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Go live step titles."
+      },
+      "section-head": {
+        "displayName": "Section Head",
+        "purpose": "Uppercase h2/h3 under a 2px (or 1px) ink rule; names its content."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Running text, 68ch measure, tabular figures."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "You / Juggernaught role labels; spec table headers."
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "Tool names, codes, secrets, nameservers."
+      }
+    },
+    "fonts": [
+      {
+        "family": "Archivo",
+        "src": "/fonts/Archivo-Variable.woff2",
+        "axes": {
+          "wdth": "62 125",
+          "wght": "100 900"
+        },
+        "license": "OFL (public/fonts/OFL-Archivo.txt)"
+      }
+    ],
+    "runtimeTheme": {
+      "source": "/brand.css (server.rs workspace_theme)",
+      "scope": ".workspace",
+      "sets": {
+        "--brand": "business primary",
+        "--brand-ink": "#ffffff or #111111, whichever contrasts more with --brand",
+        "--brand-text": "primary mixed toward black until 4.5:1 on #ffffff",
+        "--brand-text-dark": "primary mixed toward white until 4.5:1 on #151515"
+      },
+      "headingFont": "Plate h1, greeting and type specimen take the brand heading family at font-stretch 100%"
+    },
+    "shadows": [
+      {
+        "name": "overlay",
+        "value": "0 18px 40px -16px rgb(0 0 0 / 0.28), 0 2px 6px rgb(0 0 0 / 0.08)",
+        "purpose": "Modals and the mobile rail drawer only (light theme)."
+      },
+      {
+        "name": "overlay-dark",
+        "value": "0 18px 40px -16px rgb(0 0 0 / 0.7), 0 2px 6px rgb(0 0 0 / 0.4)",
+        "purpose": "Same, dark theme."
+      }
+    ],
+    "rings": [
+      {
+        "name": "focus",
+        "value": "outline: 2px solid var(--primary); outline-offset: 2px",
+        "purpose": "Default focus-visible."
+      },
+      {
+        "name": "field-focus",
+        "value": "0 0 0 3px color-mix(in srgb, var(--brand) 45%, transparent)",
+        "purpose": "Inputs on focus (composer uses 4px)."
+      },
+      {
+        "name": "selected",
+        "value": "inset 0 0 0 1px var(--ink)",
+        "purpose": "Selected choice tiles, with ink border and brand wash."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "The only easing."
+      },
+      {
+        "name": "fast",
+        "value": "120ms",
+        "purpose": "Colour and border transitions."
+      },
+      {
+        "name": "base",
+        "value": "220ms",
+        "purpose": "Row rise, composer ring."
+      },
+      {
+        "name": "slow",
+        "value": "520ms",
+        "purpose": "Asset cell rise, rail drawer slide, preview zoom."
+      },
+      {
+        "name": "rule-draw",
+        "value": "scaleX 0 to 1, 700ms, ease, 80ms delay, origin left",
+        "purpose": "The one authored moment: ink rule across the plate foot."
+      },
+      {
+        "name": "rise",
+        "value": "translateY(6px) to none",
+        "purpose": "Entrances; never from opacity 0."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "rail-drawer",
+        "value": "820px"
+      },
+      {
+        "name": "single-column",
+        "value": "640px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Section Plate",
+      "kind": "custom",
+      "refersTo": "plate",
+      "description": "Opens every section: brand flood, light wide number, heavy wide title, ink rule drawing across the foot.",
+      "html": "<div class=\"ds-plate\"><span class=\"ds-plate-no\" aria-hidden=\"true\">2</span><h1>Assets</h1></div><p class=\"ds-lede\">Everything Juggernaught has made for you.</p>",
+      "css": ":host{--ink:#111111;--ink-soft:#4d4d4d;--ink-faint:#6b6b6b;--surface:#ffffff;--surface-sunk:#f3f3f1;--line:#e3e3e0;--line-strong:#c9c9c5;--brand:#9fcf6b;--brand-ink:#111111;--brand-text:#3b6b1f;--rail:#111111;--rail-ink:#f4f4f2;--rail-soft:#a3a3a0;--rail-line:#2a2a2a;--r:4px;--ease:cubic-bezier(0.16,1,0.3,1);--inset:clamp(20px,5vw,56px);font-family:Archivo,ui-sans-serif,system-ui,sans-serif;font-variant-numeric:tabular-nums;}.ds-plate{position:relative;display:flex;align-items:flex-end;gap:20px;min-height:176px;padding:32px var(--inset) 24px;background:var(--brand);color:var(--brand-ink);}.ds-plate::after{content:'';position:absolute;left:0;right:0;bottom:0;height:4px;background:currentColor;opacity:.9;transform-origin:left;animation:ds-rule 700ms var(--ease) 80ms both;}@keyframes ds-rule{from{transform:scaleX(0)}to{transform:scaleX(1)}}.ds-plate-no{font-weight:300;font-stretch:125%;font-size:clamp(34px,4.6vw,60px);line-height:.98;letter-spacing:-.02em;opacity:.55;}.ds-plate h1{margin:0;font-weight:800;font-stretch:125%;font-size:clamp(34px,4.6vw,60px);line-height:.98;letter-spacing:-.03em;}.ds-lede{margin:20px var(--inset) 0;max-width:68ch;color:var(--ink-soft);font-size:16px;}@media (prefers-reduced-motion:reduce){.ds-plate::after{animation:none}}"
+    },
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Ink fill; hover takes the AA-safe brand text colour.",
+      "html": "<button class=\"ds-btn ds-btn-primary\">Approve</button>",
+      "css": ":host{--ink:#111111;--ink-soft:#4d4d4d;--ink-faint:#6b6b6b;--surface:#ffffff;--surface-sunk:#f3f3f1;--line:#e3e3e0;--line-strong:#c9c9c5;--brand:#9fcf6b;--brand-ink:#111111;--brand-text:#3b6b1f;--rail:#111111;--rail-ink:#f4f4f2;--rail-soft:#a3a3a0;--rail-line:#2a2a2a;--r:4px;--ease:cubic-bezier(0.16,1,0.3,1);--inset:clamp(20px,5vw,56px);font-family:Archivo,ui-sans-serif,system-ui,sans-serif;font-variant-numeric:tabular-nums;}.ds-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:42px;padding:0 18px;border-radius:var(--r);border:1.5px solid transparent;font:inherit;font-weight:650;cursor:pointer;transition:background 120ms var(--ease),color 120ms var(--ease),border-color 120ms var(--ease);}.ds-btn-primary{background:var(--ink);color:var(--surface);}.ds-btn-primary:hover{background:var(--brand-text);color:#fff;}.ds-btn:focus-visible{outline:2px solid var(--brand-text);outline-offset:2px;}"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Secondary action; strong-rule border darkens to ink on hover.",
+      "html": "<button class=\"ds-btn ds-btn-ghost\">Not now</button>",
+      "css": ":host{--ink:#111111;--ink-soft:#4d4d4d;--ink-faint:#6b6b6b;--surface:#ffffff;--surface-sunk:#f3f3f1;--line:#e3e3e0;--line-strong:#c9c9c5;--brand:#9fcf6b;--brand-ink:#111111;--brand-text:#3b6b1f;--rail:#111111;--rail-ink:#f4f4f2;--rail-soft:#a3a3a0;--rail-line:#2a2a2a;--r:4px;--ease:cubic-bezier(0.16,1,0.3,1);--inset:clamp(20px,5vw,56px);font-family:Archivo,ui-sans-serif,system-ui,sans-serif;font-variant-numeric:tabular-nums;}.ds-btn{display:inline-flex;align-items:center;justify-content:center;min-height:42px;padding:0 18px;border-radius:var(--r);border:1.5px solid transparent;font:inherit;font-weight:650;cursor:pointer;transition:border-color 120ms var(--ease);}.ds-btn-ghost{background:transparent;border-color:var(--line-strong);color:var(--ink);}.ds-btn-ghost:hover{border-color:var(--ink);}.ds-btn:focus-visible{outline:2px solid var(--brand-text);outline-offset:2px;}"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Labelled field; focus goes to an ink border with a translucent brand ring.",
+      "html": "<label class=\"ds-field\">Business name<input placeholder=\"Northside Climbing\"></label>",
+      "css": ":host{--ink:#111111;--ink-soft:#4d4d4d;--ink-faint:#6b6b6b;--surface:#ffffff;--surface-sunk:#f3f3f1;--line:#e3e3e0;--line-strong:#c9c9c5;--brand:#9fcf6b;--brand-ink:#111111;--brand-text:#3b6b1f;--rail:#111111;--rail-ink:#f4f4f2;--rail-soft:#a3a3a0;--rail-line:#2a2a2a;--r:4px;--ease:cubic-bezier(0.16,1,0.3,1);--inset:clamp(20px,5vw,56px);font-family:Archivo,ui-sans-serif,system-ui,sans-serif;font-variant-numeric:tabular-nums;}.ds-field{display:grid;gap:8px;font-weight:650;font-size:14px;color:var(--ink);}.ds-field input{width:100%;padding:11px 13px;border-radius:var(--r);border:1.5px solid var(--line-strong);background:var(--surface);font:inherit;font-weight:400;transition:border-color 120ms var(--ease),box-shadow 120ms var(--ease);}.ds-field input::placeholder{color:var(--ink-faint);}.ds-field input:focus{outline:none;border-color:var(--ink);box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 45%,transparent);}"
+    },
+    {
+      "name": "Section Rail",
+      "kind": "nav",
+      "refersTo": "rail",
+      "description": "Ink cover stock with seven numbered sections; number = keyboard shortcut; current section takes the brand flood.",
+      "html": "<nav class=\"ds-rail\"><a class=\"ds-item\" aria-current=\"page\" href=\"#\"><span class=\"ds-no\">1</span><span>Chat</span></a><a class=\"ds-item\" href=\"#\"><span class=\"ds-no\">2</span><span>Assets</span></a><a class=\"ds-item\" href=\"#\"><span class=\"ds-no\">7</span><span>Go live</span><span class=\"ds-note\">needs you</span></a></nav>",
+      "css": ":host{--ink:#111111;--ink-soft:#4d4d4d;--ink-faint:#6b6b6b;--surface:#ffffff;--surface-sunk:#f3f3f1;--line:#e3e3e0;--line-strong:#c9c9c5;--brand:#9fcf6b;--brand-ink:#111111;--brand-text:#3b6b1f;--rail:#111111;--rail-ink:#f4f4f2;--rail-soft:#a3a3a0;--rail-line:#2a2a2a;--r:4px;--ease:cubic-bezier(0.16,1,0.3,1);--inset:clamp(20px,5vw,56px);font-family:Archivo,ui-sans-serif,system-ui,sans-serif;font-variant-numeric:tabular-nums;}.ds-rail{display:flex;flex-direction:column;width:232px;background:var(--rail);border-top:1px solid var(--rail-line);}.ds-item{display:grid;grid-template-columns:34px 1fr auto;align-items:center;padding:11px 20px;border-bottom:1px solid var(--rail-line);color:var(--rail-soft);font-weight:550;text-decoration:none;transition:color 120ms var(--ease),background 120ms var(--ease);}.ds-item:hover{color:var(--rail-ink);background:#181818;}.ds-item:focus-visible{outline:2px solid var(--brand);outline-offset:-2px;}.ds-no{font-weight:700;font-stretch:112%;font-size:13px;color:#8a8a87;}.ds-item[aria-current=page]{background:var(--brand);color:var(--brand-ink);}.ds-item[aria-current=page] .ds-no{color:var(--brand-ink);opacity:.75;}.ds-note{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:#e0a64b;}.ds-note::before{content:'';width:7px;height:7px;background:currentColor;}"
+    },
+    {
+      "name": "Chip",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Suggestion and filter chips; ink-filled when on.",
+      "html": "<div class=\"ds-chips\"><button class=\"ds-chip ds-on\">All</button><button class=\"ds-chip\">Logos</button><button class=\"ds-chip\">Social posts</button></div>",
+      "css": ":host{--ink:#111111;--ink-soft:#4d4d4d;--ink-faint:#6b6b6b;--surface:#ffffff;--surface-sunk:#f3f3f1;--line:#e3e3e0;--line-strong:#c9c9c5;--brand:#9fcf6b;--brand-ink:#111111;--brand-text:#3b6b1f;--rail:#111111;--rail-ink:#f4f4f2;--rail-soft:#a3a3a0;--rail-line:#2a2a2a;--r:4px;--ease:cubic-bezier(0.16,1,0.3,1);--inset:clamp(20px,5vw,56px);font-family:Archivo,ui-sans-serif,system-ui,sans-serif;font-variant-numeric:tabular-nums;}.ds-chips{display:flex;gap:8px;flex-wrap:wrap;}.ds-chip{padding:8px 14px;border-radius:var(--r);border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);font:inherit;font-size:14px;font-weight:550;cursor:pointer;transition:border-color 120ms var(--ease),background 120ms var(--ease),color 120ms var(--ease);}.ds-chip:hover{border-color:var(--ink);}.ds-chip.ds-on{background:var(--ink);border-color:var(--ink);color:var(--surface);}.ds-chip:focus-visible{outline:2px solid var(--brand-text);outline-offset:2px;}"
+    },
+    {
+      "name": "Asset Cell with Spec Sheet",
+      "kind": "card",
+      "refersTo": "asset-cell",
+      "description": "Packed ruled cell: proof-ground preview, title, ruled spec rows, manual note.",
+      "html": "<article class=\"ds-asset\"><div class=\"ds-media\"><svg width=\"56\" height=\"56\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#111\" stroke-width=\"2\" stroke-linecap=\"square\"><path d=\"M5 12.5l4.5 4.5L19 7.5\"/></svg></div><div class=\"ds-body\"><h3>Primary logo</h3><dl class=\"ds-spec\"><dt>Kind</dt><dd>Logo</dd><dt>Format</dt><dd>SVG</dd><dt>Made</dt><dd>21 Nov 2026</dd></dl><p class=\"ds-note\">Needs your OK before it goes out.</p></div></article>",
+      "css": ":host{--ink:#111111;--ink-soft:#4d4d4d;--ink-faint:#6b6b6b;--surface:#ffffff;--surface-sunk:#f3f3f1;--line:#e3e3e0;--line-strong:#c9c9c5;--brand:#9fcf6b;--brand-ink:#111111;--brand-text:#3b6b1f;--rail:#111111;--rail-ink:#f4f4f2;--rail-soft:#a3a3a0;--rail-line:#2a2a2a;--r:4px;--ease:cubic-bezier(0.16,1,0.3,1);--inset:clamp(20px,5vw,56px);font-family:Archivo,ui-sans-serif,system-ui,sans-serif;font-variant-numeric:tabular-nums;}.ds-asset{display:flex;flex-direction:column;width:260px;border:1px solid var(--line);background:var(--surface);}.ds-media{display:grid;place-items:center;aspect-ratio:4/3;background:#f1f1ef;}.ds-body{display:grid;gap:4px;padding:12px 14px 14px;}.ds-body h3{margin:0;font-size:14.5px;font-weight:700;line-height:1.3;color:var(--ink);}.ds-spec{display:grid;grid-template-columns:max-content 1fr;margin:6px 0 0;font-size:13px;border-top:1px solid var(--line);}.ds-spec dt,.ds-spec dd{padding:6px 0;border-bottom:1px solid var(--line);}.ds-spec dt{padding-right:14px;color:var(--ink-faint);font-weight:600;}.ds-spec dd{margin:0;color:var(--ink);}.ds-note{display:inline-flex;align-items:baseline;gap:8px;margin:4px 0 0;font-size:13.5px;font-weight:600;color:#8f5600;}.ds-note::before{content:'';flex:none;width:8px;height:8px;background:#e0a64b;}"
+    },
+    {
+      "name": "Chat Message Row",
+      "kind": "custom",
+      "refersTo": "",
+      "description": "No bubbles: ruled rows with a 136px role-label column.",
+      "html": "<div class=\"ds-thread\"><div class=\"ds-msg ds-user\"><div>Make me a poster for Saturday's open day.</div></div><div class=\"ds-msg ds-assistant\"><div>Drafted one in your colours. It's in Assets, waiting for your OK.</div></div></div>",
+      "css": ":host{--ink:#111111;--ink-soft:#4d4d4d;--ink-faint:#6b6b6b;--surface:#ffffff;--surface-sunk:#f3f3f1;--line:#e3e3e0;--line-strong:#c9c9c5;--brand:#9fcf6b;--brand-ink:#111111;--brand-text:#3b6b1f;--rail:#111111;--rail-ink:#f4f4f2;--rail-soft:#a3a3a0;--rail-line:#2a2a2a;--r:4px;--ease:cubic-bezier(0.16,1,0.3,1);--inset:clamp(20px,5vw,56px);font-family:Archivo,ui-sans-serif,system-ui,sans-serif;font-variant-numeric:tabular-nums;}.ds-thread{max-width:860px;color:var(--ink);font-size:15px;line-height:1.55;}.ds-msg{display:grid;grid-template-columns:136px 1fr;gap:16px;padding:18px 0;border-top:1px solid var(--line);}.ds-msg:first-child{border-top:0;}.ds-msg::before{padding-top:3px;font-size:12px;font-weight:750;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-faint);}.ds-user::before{content:'You';}.ds-user>div{font-weight:550;}.ds-assistant::before{content:'Juggernaught';color:var(--brand-text);}"
+    },
+    {
+      "name": "Composer",
+      "kind": "input",
+      "refersTo": "composer",
+      "description": "2px ink-edged message box with an ink send square; brand ring on focus.",
+      "html": "<div class=\"ds-composer\"><textarea placeholder=\"Ask for anything on-brand\"></textarea><div class=\"ds-bar\"><span></span><button class=\"ds-send\" aria-label=\"Send\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"square\" stroke-linejoin=\"miter\"><path d=\"M12 19V5M6 11l6-6 6 6\"/></svg></button></div></div>",
+      "css": ":host{--ink:#111111;--ink-soft:#4d4d4d;--ink-faint:#6b6b6b;--surface:#ffffff;--surface-sunk:#f3f3f1;--line:#e3e3e0;--line-strong:#c9c9c5;--brand:#9fcf6b;--brand-ink:#111111;--brand-text:#3b6b1f;--rail:#111111;--rail-ink:#f4f4f2;--rail-soft:#a3a3a0;--rail-line:#2a2a2a;--r:4px;--ease:cubic-bezier(0.16,1,0.3,1);--inset:clamp(20px,5vw,56px);font-family:Archivo,ui-sans-serif,system-ui,sans-serif;font-variant-numeric:tabular-nums;}.ds-composer{width:520px;max-width:100%;border:2px solid var(--ink);border-radius:var(--r);background:var(--surface);transition:box-shadow 220ms var(--ease);}.ds-composer:focus-within{box-shadow:0 0 0 4px color-mix(in srgb,var(--brand) 45%,transparent);}.ds-composer textarea{display:block;width:100%;min-height:58px;padding:16px 18px 6px;border:0;background:transparent;outline:none;resize:none;font:inherit;font-size:16px;line-height:1.5;color:var(--ink);}.ds-composer textarea::placeholder{color:var(--ink-faint);}.ds-bar{display:flex;justify-content:space-between;align-items:center;padding:6px 10px 10px 12px;}.ds-send{display:grid;place-items:center;width:38px;height:38px;border:0;border-radius:var(--r);background:var(--ink);color:var(--surface);cursor:pointer;transition:background 120ms var(--ease);}.ds-send:hover{background:var(--brand-text);color:#fff;}.ds-send:focus-visible{outline:2px solid var(--brand-text);outline-offset:2px;}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Standards Manual",
+    "overview": "The workspace is the business's own standards manual, opened to the page you need. White manual pages carry ink text and 1px rules. Work is read as spec sheets: ruled rows, label left, value right, tabular figures. An ink-black rail holds the seven numbered sections. Each section opens on a full-width plate flooded with the brand's primary colour, set in heavy, wide Archivo. Juggernaught frames the business's work and does not compete with it.\n\nThere are two states. Before a business brand exists, and always on sign-in, setup and loading, the manual is Juggernaught's own: a green plate (#9fcf6b) with ink text and the tree-of-life mark (`public/juggernaught.svg`). Once the brand exists, `/brand.css` takes over the `.workspace` scope. The brand primary fills the plate. Text on the plate is black or white, whichever reads better. Brand-as-text is mixed toward black (light theme) or white (dark theme) until it clears WCAG AA 4.5:1. The plate heading uses the brand's heading font when there is one. Contrast is protected whatever colour the owner picks.\n\nThe density is calm and moderate: one reading column hangs from a fluid page inset, and prose keeps a 68ch measure. This rejects the soft-card SaaS chat look of bubbles, pastel accents and floating shadowed cards.",
+    "keyCharacteristics": [
+      "Brand-coloured section plate at the head of every section, with a light-weight number and a heavy wide title.",
+      "Ink rail with numbered sections; the numbers are also keyboard shortcuts 1–7.",
+      "Spec-sheet reading: ruled `dl` rows, 2px ink rules over section heads, tabular figures everywhere.",
+      "Square corners (4px, tags 2px), flat surfaces, no shadows except overlays.",
+      "One authored motion: an ink rule that draws across the plate foot."
+    ],
+    "rules": [
+      {
+        "name": "The Plate Owns the Brand Rule",
+        "body": "The brand primary floods the plate and the current rail item. Everywhere else it appears only as its AA-safe text twin (`--brand-text`, `--brand-text-dark`) or as a translucent wash (`--primary-soft`, 16–18% mix). Never set body text in raw `--brand`.",
+        "section": "colors"
+      },
+      {
+        "name": "The Contrast Is Computed Rule",
+        "body": "Plate ink is chosen by measured contrast, black (#111111) or white. Brand-as-text is mixed until it reads at 4.5:1. Any new brand-coloured surface must take its text colour from `--brand-ink`, never a fixed value.",
+        "section": "colors"
+      },
+      {
+        "name": "The Wide Means Plate Rule",
+        "body": "125% width is reserved for plates, plate numbers, the setup title and Go live step numbers. Reading text stays at normal width.",
+        "section": "typography"
+      },
+      {
+        "name": "The Tabular Rule",
+        "body": "`font-variant-numeric: tabular-nums` is set on the body. Figures line up in every spec row.",
+        "section": "typography"
+      },
+      {
+        "name": "The One Margin Rule",
+        "body": "New content aligns to `--inset`. Never introduce a second page margin.",
+        "section": "layout"
+      },
+      {
+        "name": "The Overlays Only Rule",
+        "body": "A shadow means \"this floats above the page\". Only modals and the off-canvas rail float.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** open every section with the Section Plate: brand flood, light number and heavy wide title at wdth 125, lede on the page below.",
+      "**Do** take plate text colour from `--brand-ink` and brand-as-text from `--primary` (`--brand-text` / `--brand-text-dark`), so any brand colour stays AA-readable in both themes.",
+      "**Do** present made work as spec sheets: ruled rows, tabular figures, label left and value right.",
+      "**Do** hang every column from `--inset` and build spacing in multiples of the 8px grid.",
+      "**Do** keep corners at 4px (tags 2px, overlays 6px).",
+      "**Do** start entrances from a 6px rise or a `scaleX` draw with content already visible.",
+      "**Do** keep sign-in, setup and loading in Juggernaught green #9fcf6b with the tree-of-life mark, whatever the business brand is."
+    ],
+    "donts": [
+      "**Don't** put chat messages in bubbles or use avatars. The role label column does that job.",
+      "**Don't** use shadows on cards, tiles or buttons. Shadows are for overlays only.",
+      "**Don't** start an entrance from opacity 0. Text and plates are readable from the first frame.",
+      "**Don't** add a second authored motion. The plate rule draw is the one moment. Everything else stays quiet: 120–220ms colour transitions and a 6px rise.",
+      "**Don't** set \"needs you\", step or approval status as filled pills. Use a square marker and a plain sentence.",
+      "**Don't** use 125% width for reading text, or fill large areas with raw `--brand` outside the plate and current rail item.",
+      "**Don't** put small uppercase labels above headings. Section heads are themselves the headings."
+    ]
+  }
+}
