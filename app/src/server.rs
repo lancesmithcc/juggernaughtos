@@ -435,7 +435,7 @@ pub async fn auth_gate(State(st): State<AppState>, req: Request, next: Next) -> 
     if path == "/setup" && owner {
         return Redirect::to("/").into_response();
     }
-    let public = matches!(path, "/login" | "/setup" | "/favicon.svg" | "/brand.css" | "/brand-mark.svg")
+    let public = matches!(path, "/login" | "/setup" | "/favicon.svg" | "/juggernaught.svg" | "/brand.css" | "/brand-mark.svg")
         || ["/auth/", "/pkg/", "/fonts/", "/api/", "/files/"].iter().any(|p| path.starts_with(p));
     if public || session_user(&st, req.headers()).await.is_some() {
         return next.run(req).await;

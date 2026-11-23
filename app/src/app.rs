@@ -38,7 +38,7 @@ pub fn App() -> impl IntoView {
         <Stylesheet id="leptos" href="/pkg/juggernaught.css"/>
         <Stylesheet id="brand" href="/brand.css"/>
         <Link rel="preload" href="/fonts/PlusJakartaSans-Variable.ttf" as_="font" type_="font/ttf" crossorigin="anonymous"/>
-        <Link rel="icon" href="/favicon.svg" type_="image/svg+xml"/>
+        <Link rel="icon" href="/juggernaught.svg" type_="image/svg+xml"/>
         <Meta name="robots" content="noindex, nofollow"/>
         <Title text="Juggernaught"/>
         <Router>
@@ -70,14 +70,14 @@ fn Workspace() -> impl IntoView {
             <aside class="sidebar" aria-label="Main">
                 <div class="sidebar-top">
                     <A href="/" attr:class="mark-link">
-                        <Suspense fallback=|| view! { <span class="mark" aria-hidden="true">"J"</span><span class="wordmark">"Juggernaught"</span> }>
+                        <Suspense fallback=|| view! { <img class="mark-logo" src="/juggernaught.svg" alt="" width="30" height="30"/><span class="wordmark">"Juggernaught"</span> }>
                             {move || Suspend::new(async move {
                                 match overview.await {
                                     Ok(o) if o.has_logo => view! {
                                         <img class="mark-img" src="/brand-mark.svg" alt="" width="30" height="30"/>
                                         <span class="wordmark">{o.business}</span>
                                     }.into_any(),
-                                    _ => view! { <span class="mark" aria-hidden="true">"J"</span><span class="wordmark">"Juggernaught"</span> }.into_any(),
+                                    _ => view! { <img class="mark-logo" src="/juggernaught.svg" alt="" width="30" height="30"/><span class="wordmark">"Juggernaught"</span> }.into_any(),
                                 }
                             })}
                         </Suspense>

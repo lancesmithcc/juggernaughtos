@@ -579,3 +579,8 @@ fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: 10px; }
 /* A shell command the owner copies. */
 .cmd-line { display: inline-block; padding: 6px 10px; border-radius: 10px; background: var(--surface-sunk); user-select: all; }
 .handoff-head strong .spinner { margin-right: 8px; vertical-align: -2px; }
+
+/* Juggernaught's own mark (tree of life), wherever the product signs itself. */
+.mark-logo { display: block; width: 30px; height: 30px; flex: none; }
+.setup-head .mark-logo { width: 48px; height: 48px; }
+.avatar.avatar-logo { background: none; padding: 0; object-fit: contain; }

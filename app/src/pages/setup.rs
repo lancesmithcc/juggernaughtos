@@ -71,7 +71,7 @@ fn WizardCard(
     view! {
             <div class="setup-card">
                 <header class="setup-head">
-                    <span class="mark" aria-hidden="true">"J"</span>
+                    <img class="mark-logo" src="/juggernaught.svg" alt="" width="30" height="30"/>
                     <ol class="steps" aria-label="Progress">
                         {titles.iter().enumerate().map(|(i, t)| view! {
                             <li class:done=move || { step.get() > i } class:current=move || { step.get() == i }>
@@ -218,7 +218,7 @@ fn SecureStep(save: Action<WizardInput, Result<crate::api::SetupResult, ServerFn
     let (want_passkey, want_totp) = (wants("passkey"), wants("totp"));
     view! {
         <div class="setup-card">
-            <header class="setup-head"><span class="mark" aria-hidden="true">"J"</span><span class="pill ok">"Workspace created"</span></header>
+            <header class="setup-head"><img class="mark-logo" src="/juggernaught.svg" alt="" width="30" height="30"/><span class="pill ok">"Workspace created"</span></header>
             <div class="setup-body">
                 <h1 class="setup-title">"Secure your sign-in"</h1>
                 <div class="fields">

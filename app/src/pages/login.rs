@@ -100,7 +100,7 @@ pub fn LoginPage() -> impl IntoView {
     view! {
         <div class="setup">
             <div class="setup-card narrow">
-                <header class="setup-head"><span class="mark" aria-hidden="true">"J"</span></header>
+                <header class="setup-head"><img class="mark-logo" src="/juggernaught.svg" alt="" width="30" height="30"/></header>
                 <div class="setup-body">
                     <h1 class="setup-title">"Welcome back"</h1>
                     {move || match mode.get() {

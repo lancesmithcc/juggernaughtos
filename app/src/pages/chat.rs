@@ -338,7 +338,7 @@ fn Message(msg: Msg) -> impl IntoView {
     let waiting = move || streaming.get() && text.with(|t| t.is_empty()) && tools.with(|t| t.is_empty());
     view! {
         <div class="msg assistant" class:streaming=move || streaming.get()>
-            <span class="avatar" aria-hidden="true">"J"</span>
+            <img class="avatar avatar-logo" src="/juggernaught.svg" alt="" width="28" height="28"/>
             <div class="body">
                 <Show when=move || !tools.with(|t| t.is_empty())>
                     <ul class="tools">
