@@ -107,8 +107,17 @@ pub fn session_state() -> &'static str {
     }
 }
 
+/// On a Mac with Google Chrome installed, sign-in happens in a real Chrome window on
+/// this computer, so the owner can use Touch ID (passkeys), Apple or Google sign-in and
+/// tick any human check themselves. Bundled Chromium can't use passkeys on macOS.
+/// Elsewhere (a VPS) the owner drives a private browser on the server from the admin.
+pub fn sign_in_here() -> bool {
+    cfg!(target_os = "macos") && std::env::var_os("JUGG_CHATGPT_REMOTE_SIGN_IN").is_none() && Path::new("/Applications/Google Chrome.app").exists()
+}
+
 pub fn profile_dir(env: &SiteEnv) -> PathBuf {
-    env.cfg.data_dir.join("chatgpt").join("profile")
+    // Chrome and Chromium encrypt their profiles differently: never share one.
+    env.cfg.data_dir.join("chatgpt").join(if sign_in_here() { "profile-chrome" } else { "profile" })
 }
 
 /// The installed worker (`<tools_dir>/chatgpt-image/<version>/chatgpt-image`), or the
@@ -138,7 +147,13 @@ fn worker_command(env: &SiteEnv, bin: &Path) -> tokio::process::Command {
     let mut c = tokio::process::Command::new(bin);
     let home = env.cfg.data_dir.join("chatgpt");
     let _ = std::fs::create_dir_all(&home);
-    c.env("HOME", &home).kill_on_drop(true).stdin(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+    if sign_in_here() {
+        // Chrome needs the owner's real home for the login keychain and passkeys.
+        c.args(["--browser", "chrome"]);
+    } else {
+        c.env("HOME", &home);
+    }
+    c.kill_on_drop(true).stdin(std::process::Stdio::null()).stderr(std::process::Stdio::null());
     if std::env::var_os("PATH").is_none() {
         c.env("PATH", "/usr/local/bin:/usr/bin:/bin");
     }
@@ -426,7 +441,7 @@ struct SignIn {
 
 #[derive(Clone)]
 struct FrameState {
-    jpeg: String,
+    jpeg: Option<String>,
     signed_in: bool,
     challenge: bool,
     on_auth_page: bool,
@@ -445,7 +460,11 @@ pub async fn sign_in_start(env: &SiteEnv) -> Result<(), String> {
     *slot = None;
     let gate = GATE.clone().try_lock_owned().map_err(|_| "an image is being made right now; try again in a minute".to_string())?;
     let mut cmd = worker_command(env, &bin);
-    cmd.arg("login").arg("--profile").arg(profile_dir(env)).stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped());
+    cmd.arg("login").arg("--profile").arg(profile_dir(env));
+    if sign_in_here() {
+        cmd.arg("--headed");
+    }
+    cmd.stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped());
     let mut child = cmd.spawn().map_err(|e| e.to_string())?;
     let stdin = child.stdin.take().ok_or("no stdin")?;
     let stdout = child.stdout.take().ok_or("no stdout")?;
@@ -457,16 +476,16 @@ pub async fn sign_in_start(env: &SiteEnv) -> Result<(), String> {
         let mut lines = BufReader::new(stdout).lines();
         while let Ok(Some(line)) = lines.next_line().await {
             let Ok(v) = serde_json::from_str::<Value>(&line) else { continue };
-            if let Some(f) = v["frame"].as_str() {
+            if v["frame"].is_string() || v["view"] == "window" {
                 let url = v["url"].as_str().unwrap_or_default();
                 *f2.lock().unwrap_or_else(|e| e.into_inner()) = Some(FrameState {
-                    jpeg: f.to_string(),
+                    jpeg: v["frame"].as_str().map(str::to_string),
                     signed_in: v["signed_in"] == true,
                     challenge: v["challenge"] == true,
                     on_auth_page: url.contains("auth.openai.com") || url.contains("/auth/") || url.contains("/log-in"),
                 });
             }
-            if v["signed_in"] == true && v.get("frame").is_none() {
+            if v["signed_in"] == true && v.get("frame").is_none() && v.get("view").is_none() {
                 set_session(1);
                 let _ = sqlx::query("DELETE FROM image_cooldowns WHERE backend = ? AND reason LIKE '%human check%'").bind(CHATGPT).execute(&pool).await;
                 let _ = jugg_db::audit::append(&pool, Some(&signer), "owner", "images.chatgpt_signed_in", &json!({})).await;
@@ -482,6 +501,8 @@ pub struct SignInFrame {
     pub jpeg_b64: Option<String>,
     pub signed_in: bool,
     pub active: bool,
+    /// Sign-in happens in a Chrome window on this computer, not in the admin.
+    pub here: bool,
     /// What the owner should do now: starting | log_in | signing_in | human_check | done | closed
     pub step: &'static str,
 }
@@ -490,7 +511,7 @@ pub async fn sign_in_frame() -> SignInFrame {
     let mut slot = SIGN_IN.lock().await;
     let Some(s) = slot.as_ref() else {
         let signed_in = session_state() == "signed_in";
-        return SignInFrame { jpeg_b64: None, signed_in, active: false, step: if signed_in { "done" } else { "closed" } };
+        return SignInFrame { jpeg_b64: None, signed_in, active: false, here: sign_in_here(), step: if signed_in { "done" } else { "closed" } };
     };
     let done = s.done.load(std::sync::atomic::Ordering::Relaxed);
     let f = s.frame.lock().unwrap_or_else(|e| e.into_inner()).clone();
@@ -509,7 +530,7 @@ pub async fn sign_in_frame() -> SignInFrame {
     if signed_in {
         set_session(1);
     }
-    SignInFrame { signed_in, jpeg_b64: f.map(|x| x.jpeg), active: !done, step }
+    SignInFrame { signed_in, jpeg_b64: f.and_then(|x| x.jpeg), active: !done, here: sign_in_here(), step }
 }
 
 /// Forward one input event. `kind`: click | text | key | scroll | stop.

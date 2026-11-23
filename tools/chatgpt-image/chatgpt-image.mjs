@@ -6,6 +6,9 @@
 //   chatgpt-image status   --profile DIR
 //   chatgpt-image generate --profile DIR --prompt-file FILE --out FILE [--timeout SECS]
 //   chatgpt-image login    --profile DIR [--headed]
+//   --browser chrome   use the installed Google Chrome instead of the bundled Chromium.
+//                      On a Mac this is how the owner signs in with Touch ID: Chrome is a
+//                      signed app the system lets use passkeys; bundled Chromium is not.
 //   chatgpt-image selftest   (install canary: Chromium starts headless)
 //
 // Every command prints JSON lines on stdout. `generate` ends with one result line:
@@ -21,7 +24,7 @@ import readline from "node:readline";
 
 const HOME = "https://chatgpt.com/";
 const VIEW = { width: 1280, height: 900 };
-const USAGE = `usage: chatgpt-image <status|generate|login> --profile DIR [--prompt-file FILE --out FILE] [--headed] [--timeout SECS]`;
+const USAGE = `usage: chatgpt-image <status|generate|login> --profile DIR [--prompt-file FILE --out FILE] [--headed] [--browser chrome|chromium] [--timeout SECS]`;
 
 function args(argv) {
   const o = { _: [] };
@@ -39,10 +42,15 @@ function args(argv) {
 const out = (obj) => process.stdout.write(JSON.stringify(obj) + "\n");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+let BROWSER = "chromium";
+
 async function open(profile, headed) {
   fs.mkdirSync(profile, { recursive: true, mode: 0o700 });
   const opts = {
-    channel: "chromium",
+    channel: BROWSER,
+    // Playwright gives Chrome a fake keychain by default; passkeys and the saved
+    // session need the real one. (Nothing here hides that the browser is automated.)
+    ...(BROWSER === "chrome" ? { ignoreDefaultArgs: ["--use-mock-keychain", "--password-store=basic"] } : {}),
     headless: !headed,
     viewport: VIEW,
     locale: "en-US",
@@ -104,9 +112,21 @@ const RETRY = /try again (?:in|after|at) ([^.\n]{1,40})/i;
 async function generate(o) {
   const prompt = fs.readFileSync(o["prompt-file"], "utf8").trim();
   const timeout = Number(o.timeout || 480) * 1000;
-  const { ctx, page } = await open(o.profile, false);
+  let { ctx, page } = await open(o.profile, false);
   try {
-    const s = await gotoHome(page);
+    let s = await gotoHome(page);
+    if (s.challenge && BROWSER === "chrome") {
+      // On the owner's own computer: show the window so they can tick the check themselves.
+      await ctx.close().catch(() => {});
+      ({ ctx, page } = await open(o.profile, true));
+      await page.bringToFront().catch(() => {});
+      out({ needs_owner: "human_check" });
+      s = await gotoHome(page);
+      for (let i = 0; i < 100 && s.challenge && !page.isClosed(); i++) {
+        await sleep(1500);
+        s = await state(page);
+      }
+    }
     if (s.challenge) return { ok: false, reason: "blocked", message: "ChatGPT showed a bot check to this server. Sign in again from Settings, or use the API key fallback." };
     if (!s.signed_in) return { ok: false, reason: "not_signed_in", message: "Not signed in to ChatGPT. Sign in from Settings → Intelligence → Image generation." };
 
@@ -194,8 +214,10 @@ async function login(o) {
   let stop = false;
   let signed = false;
   try {
+    if (headed) await page.bringToFront().catch(() => {});
+    ctx.on("close", () => (stop = true));
     await gotoHome(page);
-    if (!headed) {
+    {
       const rl = readline.createInterface({ input: process.stdin });
       rl.on("line", async (line) => {
         let m;
@@ -206,6 +228,7 @@ async function login(o) {
         }
         try {
           if (m.stop) stop = true;
+          else if (headed) return; // the owner uses the real window
           else if (m.click) await page.mouse.click(Math.max(0, Math.min(VIEW.width, +m.click.x)), Math.max(0, Math.min(VIEW.height, +m.click.y)));
           else if (typeof m.text === "string") await page.keyboard.insertText(m.text.slice(0, 500));
           else if (typeof m.key === "string" && /^(Enter|Tab|Backspace|Escape|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|Shift\+Tab)$/.test(m.key)) await page.keyboard.press(m.key);
@@ -217,11 +240,12 @@ async function login(o) {
     }
     const deadline = Date.now() + 15 * 60 * 1000;
     while (!stop && Date.now() < deadline) {
+      if (page.isClosed()) break;
       const s = await state(page);
       if (!headed) {
         const shot = await page.screenshot({ type: "jpeg", quality: 60 }).catch(() => null);
         if (shot) out({ frame: shot.toString("base64"), w: VIEW.width, h: VIEW.height, signed_in: s.signed_in, challenge: s.challenge, url: page.url().split("?")[0] });
-      }
+      } else out({ view: "window", signed_in: s.signed_in, challenge: s.challenge, url: page.url().split("?")[0] });
       if (s.signed_in && !page.url().includes("/auth")) {
         if (!signed) out({ signed_in: true });
         signed = true;
@@ -251,6 +275,11 @@ if (cmd === "selftest") {
   await b.close();
   console.log(ok ? "usage: chatgpt-image selftest ok" : "selftest failed");
   process.exit(ok ? 0 : 1);
+}
+if (o.browser === "chrome") BROWSER = "chrome";
+else if (o.browser && o.browser !== "chromium") {
+  console.error("--browser must be chrome or chromium");
+  process.exit(2);
 }
 if (!o.profile) {
   console.error(USAGE);

@@ -398,6 +398,7 @@ fn ChatGptImages() -> impl IntoView {
 pub fn ChatGptSignInDialog() -> impl IntoView {
     let Some(ChatGptPrompt { open, connected }) = use_context::<ChatGptPrompt>() else { return ().into_any() };
     let frame = RwSignal::new(None::<String>);
+    let here = RwSignal::new(false);
     let step = RwSignal::new(String::from("starting"));
     let err = RwSignal::new(None::<String>);
     let poll = StoredValue::new(None::<IntervalHandle>);
@@ -422,12 +423,13 @@ pub fn ChatGptSignInDialog() -> impl IntoView {
             if f.jpeg_b64.is_some() {
                 frame.set(f.jpeg_b64);
             }
+            here.set(f.here);
             step.set(f.step.clone());
             if f.step == "done" {
                 stop_polling();
                 connected.update(|n| *n += 1);
                 set_timeout(move || open.set(false), std::time::Duration::from_millis(2200));
-            } else if !f.active && frame.get_untracked().is_some() {
+            } else if !f.active && (frame.get_untracked().is_some() || f.here) && f.step != "starting" {
                 stop_polling();
             }
         });
@@ -541,6 +543,11 @@ pub fn ChatGptSignInDialog() -> impl IntoView {
         send("scroll", 0.0, ev.delta_y(), String::new());
     };
     let instruction = move || match step.get().as_str() {
+        "starting" if here.get() => "Opening a Chrome window on this computer…",
+        "log_in" if here.get() => "A Chrome window opened on this computer. Click “Log in” there.",
+        "signing_in" if here.get() => "Sign in in the Chrome window. If ChatGPT offers a passkey, use your fingerprint (Touch ID).",
+        "human_check" if here.get() => "ChatGPT wants to check you're human. Tick the box in the Chrome window.",
+        "closed" if here.get() => "The Chrome window closed before you were signed in. Press Try again.",
         "setup" => "One-time setup: getting the image maker ready on your server (a few minutes the first time)…",
         "setup_failed" => "Setup needs the server's admin once. Run this on the server, then press Try again:",
         "starting" => "Opening a private browser on your server…",
@@ -572,7 +579,16 @@ pub fn ChatGptSignInDialog() -> impl IntoView {
                         <details class="hint"><summary>"Why"</summary>{move || err.get()}</details>
                     })}
                     {move || err.get().filter(|_| step.get() != "setup_failed").map(|e| view! { <p class="hint err" role="alert">{e}</p> })}
-                    <div class="remote-browser" tabindex="0" node_ref=screen on:keydown=keydown on:paste=paste>
+                    <Show when=move || here.get() && !matches!(step.get().as_str(), "setup" | "setup_failed")>
+                        <div class="here-panel">
+                            <div class="here-icon" aria-hidden="true">{move || if step.get() == "done" { "✓" } else { "⌘" }}</div>
+                            <div>
+                                <strong>{move || if step.get() == "done" { "Signed in" } else { "Look for the Chrome window" }}</strong>
+                                <p>"Sign in to ChatGPT there the way you normally do. Passkeys with Touch ID, Apple, Google and email codes all work. This window closes by itself when you're in."</p>
+                            </div>
+                        </div>
+                    </Show>
+                    <div class="remote-browser" class:hidden=move || here.get() && !matches!(step.get().as_str(), "setup" | "setup_failed") tabindex="0" node_ref=screen on:keydown=keydown on:paste=paste>
                         {move || match (frame.get(), step.get().as_str()) {
                             (Some(f), _) => view! { <img src=format!("data:image/jpeg;base64,{f}") alt="Your server's private browser showing ChatGPT" width="1280" height="900" on:click=click on:wheel=wheel/> }.into_any(),
                             (None, "setup") => view! { <div class="remote-wait"><span class="spinner"></span>"Setting up the image maker…"</div> }.into_any(),
@@ -580,7 +596,9 @@ pub fn ChatGptSignInDialog() -> impl IntoView {
                             _ => view! { <div class="remote-wait"><span class="spinner"></span>"Starting the browser…"</div> }.into_any(),
                         }}
                     </div>
-                    <p class="hint">"Click on the picture, then just type: your keys and pastes go to that browser and are never saved. Scroll with your mouse or trackpad."</p>
+                    <Show when=move || !here.get()>
+                        <p class="hint">"Click on the picture, then just type: your keys and pastes go to that browser and are never saved. Scroll with your mouse or trackpad."</p>
+                    </Show>
                     {move || matches!(step.get().as_str(), "closed" | "setup_failed").then(|| view! { <button class="btn primary" type="button" on:click=move |_| { open.set(false); set_timeout(move || open.set(true), std::time::Duration::from_millis(50)); }>"Try again"</button> })}
                 </div>
             </div>

@@ -470,6 +470,11 @@ fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: 10px; }
 .remote-browser:focus-visible { box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 24%, transparent); }
 .remote-browser img { display: block; width: 100%; height: auto; border-radius: 14px; border: 1px solid var(--line); cursor: pointer; background: var(--surface-sunk); }
 .remote-wait { aspect-ratio: 1280 / 900; display: flex; gap: 10px; align-items: center; justify-content: center; border-radius: 14px; border: 1px dashed var(--line); color: var(--ink-faint); }
+.remote-browser.hidden { display: none; }
+.here-panel { display: flex; gap: 16px; align-items: flex-start; padding: 22px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface-sunk); }
+.here-panel strong { display: block; margin-bottom: 4px; }
+.here-panel p { margin: 0; color: var(--ink-soft, var(--ink-faint)); line-height: 1.5; }
+.here-icon { flex: none; width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; font-size: 20px; background: color-mix(in srgb, var(--primary) 16%, transparent); color: var(--primary); }
 .spinner { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--primary); animation: spin 0.9s linear infinite; }
 .hint.err { color: var(--err); }
 .cmd { margin: 0; padding: 12px 14px; border-radius: 12px; background: var(--surface-sunk); overflow-x: auto; }

@@ -562,6 +562,8 @@ pub struct SignInFrameView {
     pub jpeg_b64: Option<String>,
     pub signed_in: bool,
     pub active: bool,
+    /// Sign-in happens in a Chrome window on the server's own screen (a Mac): Touch ID works there.
+    pub here: bool,
     pub step: String,
 }
 
@@ -616,7 +618,7 @@ pub async fn chatgpt_signin_frame() -> Result<SignInFrameView, ServerFnError> {
     let st = ctx::state()?;
     ctx::user(&st).await?;
     let f = crate::images::sign_in_frame().await;
-    Ok(SignInFrameView { jpeg_b64: f.jpeg_b64, signed_in: f.signed_in, active: f.active, step: f.step.into() })
+    Ok(SignInFrameView { jpeg_b64: f.jpeg_b64, signed_in: f.signed_in, active: f.active, here: f.here, step: f.step.into() })
 }
 
 #[server]

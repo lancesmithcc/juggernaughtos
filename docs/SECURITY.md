@@ -132,6 +132,14 @@ Internal review of the whole system, done 2026-11-22. Each finding and what chan
   screenshots of a headless browser on the server and forwards the owner's clicks and keystrokes;
   input is passed through and never written down. Opening the pop-up and a completed sign-in are
   audit-logged.
+- On a Mac with Google Chrome installed (a desktop install, the owner at the keyboard), the worker
+  uses the installed Chrome instead (`--browser chrome`, profile `data_dir/chatgpt/profile-chrome`)
+  and sign-in happens in a visible Chrome window on that screen, so passkeys with Touch ID, Apple
+  and Google sign-in work and the owner ticks any human check directly. Playwright's mock keychain
+  is turned off for Chrome so passkeys and the session use the owner's real login keychain; the
+  worker keeps the owner's HOME there. If headless Chrome is shown a human check while making an
+  image, the window is shown so the owner can tick it (up to about 2.5 minutes). Set
+  `JUGG_CHATGPT_REMOTE_SIGN_IN=1` to force the remote pop-up instead.
 - No bot-check evasion: the browser identifies as what it is. If ChatGPT shows a human check, the
   worker stops (`blocked`), image generation pauses 30 minutes, and the owner completes the check
   themselves in the pop-up (which clears the pause).
