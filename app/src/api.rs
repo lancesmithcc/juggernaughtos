@@ -194,6 +194,17 @@ pub struct ToolView {
     pub available: bool,
 }
 
+/// One app in the creative suite, as the owner sees it in Settings.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SuiteTool {
+    pub name: String,
+    pub what: String,
+    pub version: String,
+    /// ready | missing | later | not_needed
+    pub state: String,
+    pub note: String,
+}
+
 // ---------------------------------------------------------------- server helpers
 
 #[cfg(feature = "ssr")]
@@ -533,14 +544,39 @@ pub async fn get_standards() -> Result<StandardsView, ServerFnError> {
 pub async fn get_tools() -> Result<Vec<ToolView>, ServerFnError> {
     let st = ctx::state()?;
     ctx::user(&st).await?;
+    Ok(st.registry.specs().into_iter().map(|s| ToolView { name: s.name, description: s.description, risk: format!("{:?}", s.risk).to_lowercase(), available: true }).collect())
+}
+
+/// The pinned creative suite and whether each app is ready on this box.
+#[server]
+pub async fn get_suite() -> Result<Vec<SuiteTool>, ServerFnError> {
+    let st = ctx::state()?;
+    ctx::user(&st).await?;
     let lock = std::fs::read_to_string(st.cfg.tools_dir.join("tools.lock.toml")).ok().and_then(|s| jugg_tools::lock::ToolsLock::parse(&s).ok()).unwrap_or_else(jugg_tools::lock::ToolsLock::embedded);
-    let installed: std::collections::HashSet<String> = jugg_tools::install::status(&lock, &st.cfg.tools_dir).into_iter().filter(|t| t.installed).map(|t| t.name).collect();
-    let mut out: Vec<ToolView> = st.registry.specs().into_iter().map(|s| ToolView { name: s.name, description: s.description, risk: format!("{:?}", s.risk).to_lowercase(), available: true }).collect();
-    // Pinned tools that aren't installed yet, so the owner knows what's missing.
-    for t in jugg_tools::install::status(&lock, &st.cfg.tools_dir).into_iter().filter(|t| !t.installed && !installed.contains(&t.name)) {
-        out.push(ToolView { name: t.name, description: t.note, risk: "create".into(), available: false });
-    }
-    Ok(out)
+    let what = |n: &str| match n {
+        "photocraft" => "PhotoCraft · photo editing (crop, adjust, layers, PSD)",
+        "vectorcraft" => "VectorCraft · vector layouts to PDF, SVG and PNG",
+        "pdfcraft" => "PdfCraft · combining and editing PDFs",
+        "hyperframes" => "HyperFrames · video from HTML (social clips, explainers)",
+        "impeccable" => "Impeccable · design quality checks",
+        "kokoros" => "Kokoro · voice-overs (text to speech)",
+        "open-design" => "open-design · brand design systems",
+        "google-fonts" => "Google Fonts · your brand's typefaces",
+        _ => "",
+    };
+    Ok(jugg_tools::install::status(&lock, &st.cfg.tools_dir)
+        .into_iter()
+        .map(|t| {
+            let locked = lock.tool.get(&t.name);
+            let state = match locked.map(|l| l.install.as_str()) {
+                _ if t.installed => "ready",
+                Some("unavailable") if t.name == "open-design" => "not_needed",
+                Some("unavailable") => "later",
+                _ => "missing",
+            };
+            SuiteTool { what: what(&t.name).to_string(), name: t.name, version: t.version, state: state.into(), note: t.note }
+        })
+        .collect())
 }
 
 // ---------------------------------------------------------------- assets

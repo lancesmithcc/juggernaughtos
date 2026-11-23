@@ -162,7 +162,7 @@ fi
 install -d -m 0755 -o root -g root "$PREFIX/tools"
 install -m 0644 "$PREFIX/current/tools.lock.toml" "$PREFIX/tools/tools.lock.toml"
 if [[ "${JUGG_SKIP_TOOLS:-0}" != 1 ]]; then
-  say "Installing creative tools (downloads a few hundred MB; video tools need Node 20+)"
+  say "Installing creative tools (downloads a few hundred MB; video tools need Node.js 22+)"
   JUGG_CONFIG="$CONF" /usr/local/bin/juggernaught tools install --all 2>&1 | sed 's/^/    /' \
     || warn "some tools could not be installed; run 'sudo JUGG_CONFIG=$CONF juggernaught tools status' later"
 fi

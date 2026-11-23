@@ -1,6 +1,6 @@
 //! Sidebar panels. Everything here is also doable from chat; panels are for looking.
 
-use crate::api::{codex_images_ready, publish_site_anyway, image_settings, save_image_settings, get_site, publish_site, rollback_site, get_brand, get_providers, get_security, get_sign_in_methods, get_standards, get_tools, save_provider_settings};
+use crate::api::{codex_images_ready, publish_site_anyway, image_settings, save_image_settings, get_site, publish_site, rollback_site, get_brand, get_providers, get_security, get_sign_in_methods, get_standards, get_suite, get_tools, save_provider_settings};
 use crate::pages::account::{AddPasskey, RegenerateRecovery, TotpEnroll};
 use leptos::prelude::*;
 
@@ -240,6 +240,7 @@ pub fn SecurityPanel() -> impl IntoView {
 #[component]
 pub fn SettingsPanel() -> impl IntoView {
     let tools = Resource::new(|| (), |_| get_tools());
+    let suite = Resource::new(|| (), |_| get_suite());
     view! {
         <Panel no="6" title="Settings" lede="Connect intelligence, manage how you sign in, and see the tools I can use.">
             <h2 class="section-h">"Intelligence"</h2>
@@ -249,14 +250,55 @@ pub fn SettingsPanel() -> impl IntoView {
             <ImageSettings/>
             <h2 class="section-h">"Signing in"</h2>
             <SignIn/>
-            <h2 class="section-h">"Tools"</h2>
+            <h2 class="section-h">"Creative tools"</h2>
+            <Suspense fallback=|| view! { <div class="skeleton"></div> }>
+                {move || Suspend::new(async move {
+                    suite.await.map(|t| {
+                        let missing = t.iter().any(|x| x.state == "missing");
+                        view! {
+                            <ul class="rules standards">{t.into_iter().map(|x| {
+                                let (tone, label) = match x.state.as_str() {
+                                    "ready" => ("done", "Ready"),
+                                    "missing" => ("needs", "Not installed"),
+                                    "later" => ("", "Coming later"),
+                                    _ => ("", "Not needed"),
+                                };
+                                let detail = if x.state == "ready" && x.note == "ready" { format!("Version {}.", x.version) } else { x.note.clone() };
+                                view! {
+                                    <li class="rule">
+                                        <p class="rule-why">{if x.what.is_empty() { x.name.clone() } else { x.what.clone() }}</p>
+                                        <span class="note" data-tone=tone>{label}</span>
+                                        <p class="rule-id">{detail}</p>
+                                    </li>
+                                }
+                            }).collect_view()}</ul>
+                            {missing.then(|| view! {
+                                <p class="hint">"Install the missing ones once, from the server's shell; each download is checked against its pinned fingerprint before it runs:"</p>
+                                <p><code class="cmd-line">"sudo juggernaught tools install --all"</code></p>
+                            })}
+                        }
+                    })
+                })}
+            </Suspense>
+            <h2 class="section-h">"What I can do"</h2>
             <Suspense fallback=|| view! { <div class="skeleton"></div> }>
                 {move || Suspend::new(async move {
                     tools.await.map(|t| view! {
-                        <ul class="rules">{t.into_iter().map(|x| view! {
-                            <li class="rule" class:unavailable=!x.available><code>{x.name}</code><span class=format!("badge {}", x.risk)>{x.risk.clone()}</span>
-                                {(!x.available).then(|| view! { <span class="badge" title="Install with: juggernaught tools install --all">"not installed"</span> })}
-                                <p>{x.description}</p></li>
+                        <ul class="rules standards">{t.into_iter().map(|x| {
+                            let effect = match x.risk.as_str() {
+                                "read" => "Looks only",
+                                "create" => "Makes drafts",
+                                "modify" => "Changes things, asks first if risky",
+                                "publish" => "Publishes, always asks first",
+                                _ => "Asks first",
+                            };
+                            view! {
+                                <li class="rule">
+                                    <p class="rule-why">{x.description}</p>
+                                    <span class="note">{effect}</span>
+                                    <code class="rule-id">{x.name}</code>
+                                </li>
+                            }
                         }).collect_view()}</ul>
                     })
                 })}

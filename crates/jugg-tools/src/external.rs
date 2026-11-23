@@ -30,7 +30,7 @@ impl Tool for CliTool {
     async fn run(&self, args: Value, ctx: &ToolContext) -> Result<ToolOutput, ToolError> {
         let (argv, outputs) = (self.build)(&args, ctx)?;
         let spec = SandboxSpec {
-            program: self.root.join(&self.locked.bin),
+            program: self.root.join(self.locked.program()),
             args: argv,
             tool_root: self.root.clone(),
             job_dir: ctx.job_dir.clone(),
@@ -75,7 +75,7 @@ pub fn register_all(r: &mut Registry, lock: &ToolsLock, tools_dir: &Path) {
     let mut add = |name: &str, spec: ToolSpec, build: ArgBuilder| {
         // Only offer the agent tools that are actually installed on this box.
         if let Some(t) = lock.tool.get(name) {
-            if !t.bin.is_empty() && root(name, t).join(&t.bin).exists() {
+            if !t.program().is_empty() && root(name, t).join(t.program()).exists() {
                 r.register(CliTool { spec, locked: t.clone(), root: root(name, t), build });
             }
         }
@@ -189,6 +189,7 @@ pub fn register_all(r: &mut Registry, lock: &ToolsLock, tools_dir: &Path) {
             risk: Risk::Read,
             long_running: false,
         },
-        |a, ctx| Ok((vec!["audit".into(), rel(a, "input", ctx)?, "--json".into()], vec![])),
+        // The engine's command is `detect` (impeccable engine-v0.1.x).
+        |a, ctx| Ok((vec!["detect".into(), rel(a, "input", ctx)?, "--json".into()], vec![])),
     );
 }

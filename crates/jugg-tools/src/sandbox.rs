@@ -59,7 +59,9 @@ pub fn build_command(spec: &SandboxSpec) -> Command {
         c
     };
     cmd.args(&spec.args);
-    cmd.env("PATH", "/usr/local/bin:/usr/bin:/bin");
+    // Inside bubblewrap the system dirs are all there is; outside it (development
+    // on a Mac), add wherever Node lives so npm tools like HyperFrames can start.
+    cmd.env("PATH", if use_bwrap { "/usr/local/bin:/usr/bin:/bin".to_string() } else { crate::install::tool_path() });
     cmd.env("HOME", if use_bwrap { "/work".into() } else { spec.job_dir.to_string_lossy().to_string() });
     for (k, v) in &spec.env {
         cmd.env(k, v);

@@ -19,6 +19,9 @@ pub struct LockedTool {
     pub install: String,
     /// Binary to run, relative to `<tools_dir>/<name>/<version>/`.
     pub bin: String,
+    /// Where the binary sits in the macOS download, when that differs.
+    #[serde(default)]
+    pub bin_macos: Option<String>,
     /// Subcommand that starts its MCP server, if it has one.
     #[serde(default)]
     pub mcp: Option<Vec<String>>,
@@ -51,6 +54,14 @@ pub struct Dist {
     pub sha256_aarch64: Option<String>,
     #[serde(default)]
     pub sha256_x86_64: Option<String>,
+    /// macOS release asset (a `.zip` is unpacked, its top folder dropped) and its
+    /// pinned hashes per CPU (the same hash twice for a universal build).
+    #[serde(default)]
+    pub asset_macos: Option<String>,
+    #[serde(default)]
+    pub sha256_macos_aarch64: Option<String>,
+    #[serde(default)]
+    pub sha256_macos_x86_64: Option<String>,
     /// npm package name (install = "npm").
     #[serde(default)]
     pub package: Option<String>,
@@ -61,6 +72,21 @@ fn default_timeout() -> u64 {
 }
 fn default_mem() -> u64 {
     2048
+}
+
+impl LockedTool {
+    /// The binary to run on this operating system.
+    pub fn program(&self) -> &str {
+        match &self.bin_macos {
+            Some(b) if cfg!(target_os = "macos") => b,
+            _ => &self.bin,
+        }
+    }
+
+    /// Ready without installing anything (built in, or fetched on demand).
+    pub fn is_builtin(&self) -> bool {
+        self.install == "on-demand"
+    }
 }
 
 impl ToolsLock {
@@ -87,6 +113,11 @@ mod tests {
                 let d = t.dist.as_ref().unwrap_or_else(|| panic!("{name}: dist missing"));
                 for h in [&d.sha256_aarch64, &d.sha256_x86_64] {
                     assert_eq!(h.as_deref().map(str::len), Some(64), "{name}: every downloadable tool is hash-pinned per CPU");
+                }
+                if d.asset_macos.is_some() {
+                    for h in [&d.sha256_macos_aarch64, &d.sha256_macos_x86_64] {
+                        assert_eq!(h.as_deref().map(str::len), Some(64), "{name}: macOS downloads are hash-pinned per CPU too");
+                    }
                 }
             }
         }

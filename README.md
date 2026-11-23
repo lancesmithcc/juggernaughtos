@@ -151,7 +151,7 @@ background (letter counters included) and makes the full set: SVG, print PDF and
 WebP at 4000 px and 1000 px. It becomes the brand logo for the website header and favicon.
 
 PhotoCraft, VectorCraft, PdfCraft and impeccable install from their
-upstream releases; HyperFrames video needs Node 20+; Kokoro voice and open-design are not yet
+upstream releases; HyperFrames video needs Node.js 22+; Kokoro voice and open-design are not yet
 available as server binaries upstream.
 
 ## Hardware

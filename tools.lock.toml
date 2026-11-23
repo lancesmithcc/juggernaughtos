@@ -1,12 +1,14 @@
 # Pinned external tools. `juggernaught tools install` downloads exactly these
 # artifacts and refuses anything whose SHA-256 differs from the pin.
-# Managed by the release pipeline / updater; verified 2026-11-22.
+# Managed by the release pipeline / updater; verified 2026-11-22 (macOS assets 2026-11-23,
+# checked against each release's SHA256SUMS.txt / .sha256 files).
 
 [tool.photocraft]
 repo = "storytold/photocraft"
 version = "v0.23.1"
 install = "github-tarball"
 bin = "bin/photocraft-cli"
+bin_macos = "photocraft-cli"
 mcp = ["mcp"]
 license = "MIT OR Apache-2.0"
 timeout_secs = 600
@@ -15,18 +17,25 @@ memory_mb = 4096
 asset = "photocraft-{v}-linux-{arch}.tar.gz"
 sha256_aarch64 = "fcc81c38ae62c72fa9f4fd1ec3d18396493ba261662792d6995cc35905ce71d2"
 sha256_x86_64 = "4383aef67a07cc370ad250a6ed60015205d3e6c463faf3ff4b0f67b8178ccfc8"
+asset_macos = "photocraft-cli-{v}-macos-universal.zip"
+sha256_macos_aarch64 = "a6ecdc6d4add02881642bda0a0b191b4974118651f2ec5641dc71b2c3ff4b752"
+sha256_macos_x86_64 = "a6ecdc6d4add02881642bda0a0b191b4974118651f2ec5641dc71b2c3ff4b752"
 
 [tool.vectorcraft]
 repo = "storytold/vectorcraft"
 version = "v0.24.1"
 install = "github-tarball"
 bin = "bin/vectorcraft-cli"
+bin_macos = "vectorcraft-cli"
 mcp = ["mcp"]
 license = "MIT OR Apache-2.0"
 [tool.vectorcraft.dist]
 asset = "vectorcraft-{v}-linux-{arch}.tar.gz"
 sha256_aarch64 = "4b9735489789d336c1ca4344689eb4a1d4a3f0b6e8db7f8c0659c24d10653455"
 sha256_x86_64 = "a090514252fde145495ac6fc65d6ff1311d698998e57ba434d5d0896c3d1fbfa"
+asset_macos = "vectorcraft-cli-{v}-macos-universal.zip"
+sha256_macos_aarch64 = "7f0c8261e5c831d9681e48272f9ba73bf8702dbf6ceb84f98177c7c007faddf2"
+sha256_macos_x86_64 = "7f0c8261e5c831d9681e48272f9ba73bf8702dbf6ceb84f98177c7c007faddf2"
 
 [tool.pdfcraft]
 repo = "storytold/pdfcraft"
@@ -38,6 +47,9 @@ license = "MIT OR Apache-2.0"
 asset = "pdfcraft-cli-{v}-linux-{arch}.tar.gz"
 sha256_aarch64 = "e41fc6d757eb6e0b4b6f6d9115a3efa530785c092fc9a5be914893416da6c9f3"
 sha256_x86_64 = "a97b2e789d214360424f19814bc66f3eaf6d04ef5e42e472b46f7b9ddceea5c8"
+asset_macos = "pdfcraft-cli-{v}-macos-universal.zip"
+sha256_macos_aarch64 = "337a9f644744b57e10de41c57366e53c5ccf8840a4d5dc7322b17b9b83fdc2fa"
+sha256_macos_x86_64 = "337a9f644744b57e10de41c57366e53c5ccf8840a4d5dc7322b17b9b83fdc2fa"
 
 [tool.impeccable]
 repo = "pbakaus/impeccable"
@@ -49,6 +61,9 @@ license = "Apache-2.0"
 asset = "impeccable-linux-{arch_short}"
 sha256_aarch64 = "107112e1bf8067b3991eeb38ccafd2085278c8973f689d7feb2b94e879345387"
 sha256_x86_64 = "bf0524d3b44a199953d70ba10548ba48c5ab50d6ad260eeaa84ed8945c10a721"
+asset_macos = "impeccable-darwin-{arch_short}"
+sha256_macos_aarch64 = "2884e7eca3898ecf035287cd756c870106ba03bcaa9703e62d9cb25e06ac52b3"
+sha256_macos_x86_64 = "201559fbccbe4ca87b00b3c018a8acfe228e80008220c41f4c47b0939450773b"
 
 [tool.hyperframes]
 repo = "heygen-com/hyperframes"
@@ -67,7 +82,7 @@ version = "open-design-v0.27.2"
 install = "unavailable"
 bin = ""
 license = "Apache-2.0"
-note = "Desktop app only upstream; brand systems are exported as DESIGN.md (jugg-brand) instead."
+note = "Not needed: open-design is a desktop app upstream, and your brand system is already written as DESIGN.md (Brand → Machine-readable standards)."
 
 [tool.kokoros]
 repo = "lucasjinreal/Kokoros"
@@ -76,13 +91,13 @@ install = "unavailable"
 bin = "bin/koko"
 license = "Apache-2.0"
 memory_mb = 2048
-note = "No upstream release binaries yet; built by the Juggernaught release pipeline in a later phase."
+note = "Voice (text to speech) isn't available yet: Kokoros publishes no ready-made build, so it will ship with a later Juggernaught release."
 
 [tool.google-fonts]
 repo = "google/fonts"
 version = "main@2026-11-21"
-install = "unavailable"
+install = "on-demand"
 bin = ""
 license = "OFL-1.1 / Apache-2.0 / UFL (per family)"
 network = true
-note = "Font mirror sync lands with the website builder."
+note = "Ready: each font family your brand uses is fetched once, with its licence, when a page or document needs it."
